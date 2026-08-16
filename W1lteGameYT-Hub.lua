@@ -26,7 +26,7 @@ AdvanceTech.Settings = {
         ActivationDelay = 0.07,
         ActivationKey = Enum.UserInputType.MouseButton2,
         AimPart = "Head",
-        HeadOffset = 0.15
+        HeadOffset = -0.5
     },
     Privacy = {
         AntiSpectate = true
@@ -119,7 +119,8 @@ mainTab:Toggle("Enable Aimbot", AdvanceTech.Settings.Aimbot.Enabled, function(va
 mainTab:Slider("FOV Radius", 10, 500, AdvanceTech.Settings.Aimbot.FOV, function(val) AdvanceTech.Settings.Aimbot.FOV = val end)
 mainTab:Slider("Aim Smoothing", 1, 50, AdvanceTech.Settings.Aimbot.Smoothing, function(val) AdvanceTech.Settings.Aimbot.Smoothing = val end)
 mainTab:Slider("Activation Delay", 0, 50, AdvanceTech.Settings.Aimbot.ActivationDelay * 100, function(val) AdvanceTech.Settings.Aimbot.ActivationDelay = val / 100 end)
-mainTab:Slider("Head Offset", -2, 2, AdvanceTech.Settings.Aimbot.HeadOffset, function(val) AdvanceTech.Settings.Aimbot.HeadOffset = val end)
+mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, AdvanceTech.Settings.Aimbot.HeadOffset, function(val) AdvanceTech.Settings.Aimbot.HeadOffset = val end)
+mainTab:Dropdown("Aim Part", {"Head", "Torso"}, function(val) AdvanceTech.Settings.Aimbot.AimPart = (val == "Torso") and "HumanoidRootPart" or "Head" end)
 mainTab:Dropdown("Team Check", {"FFA", "Team-Based", "Everyone"}, function(val) AdvanceTech.Settings.Aimbot.TeamCheck = val end)
 mainTab:Toggle("Show FOV Circle", AdvanceTech.Settings.Aimbot.ShowFOVCircle, function(val) AdvanceTech.Settings.Aimbot.ShowFOVCircle = val end)
 mainTab:Label("Hold Right-Click to Activate Aimbot.")
