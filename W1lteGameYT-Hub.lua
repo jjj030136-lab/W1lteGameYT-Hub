@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v9.0")
+print("[W1lteGameYT Hub] Loading... v10.0")
 
 local success, err = pcall(function()
 
@@ -17,23 +17,16 @@ local Aimbot = {}
 
 Aimbot.Settings = {
     Enabled = true,
-    TeamCheck = "FFA",
-    WallCheck = true,
-    Smoothing = 10,
-    Mode = "Mouse",
-    TriggerKey = Enum.UserInputType.MouseButton2,
     AimPoint = "Neck",
     AimHeight = -0.8,
-    FOV = 120,
-    ShowFOVCircle = true,
-    DebugPrint = false
+    AimSpeed = 10,
+    FOV = 120
 }
 
 Aimbot.State = {
     Running = false,
     Locked = nil,
     LastTime = 0,
-    LastDebug = 0,
     UI = { IsVisible = true }
 }
 
@@ -47,11 +40,7 @@ if Aimbot.FOVCircle then
 end
 
 function Aimbot:IsEnemy(player)
-    if not player or player == LocalPlayer then return false end
-    local check = self.Settings.TeamCheck
-    if check == "FFA" or check == "Everyone" then return true end
-    if check == "Team-Based" and player.Team ~= LocalPlayer.Team then return true end
-    return false
+    return player ~= nil and player ~= LocalPlayer
 end
 
 function Aimbot:GetAimPosition(character)
@@ -83,10 +72,6 @@ function Aimbot:GetClosestPlayer()
             if self:IsEnemy(player) and character and humanoid and humanoid.Health > 0 then
                 local aimPosition = self:GetAimPosition(character)
                 if aimPosition then
-                    if self.Settings.WallCheck and #(Camera:GetPartsObscuringTarget({aimPosition}, character:GetDescendants())) > 0 then
-                        continue
-                    end
-
                     local vector, onScreen = Camera:WorldToViewportPoint(aimPosition)
                     if onScreen then
                         local distance = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(vector.X, vector.Y)).Magnitude
@@ -123,39 +108,42 @@ function Aimbot:GetClosestPlayer()
 end
 
 function Aimbot:GetSmoothFactor(dt)
-    local rate = 50 / math.max(self.Settings.Smoothing, 1)
+    local rate = math.max(self.Settings.AimSpeed, 1)
     return 1 - math.exp(-rate * dt)
 end
 
--- UI
+function Aimbot:ToggleUI()
+    self.State.UI.IsVisible = not self.State.UI.IsVisible
+    local ui = game.CoreGui:FindFirstChild("ui")
+    if ui then
+        ui.Enabled = self.State.UI.IsVisible
+    end
+end
+
+-- Menu (only what you asked for)
 local mainTab = win:Tab("Main")
-mainTab:Label("> Aimbot v9.0")
+mainTab:Label("> Aimbot v10.0")
 mainTab:Toggle("Enable Aimbot", Aimbot.Settings.Enabled, function(val) Aimbot.Settings.Enabled = val end)
-mainTab:Slider("FOV Radius", 10, 500, Aimbot.Settings.FOV, function(val) Aimbot.Settings.FOV = val end)
-mainTab:Slider("Aim Smoothing", 1, 50, Aimbot.Settings.Smoothing, function(val) Aimbot.Settings.Smoothing = val end)
+mainTab:Dropdown("Aim Point", {"Neck", "Head", "Chest"}, function(val) Aimbot.Settings.AimPoint = val end)
 mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, Aimbot.Settings.AimHeight, function(val) Aimbot.Settings.AimHeight = val end)
-mainTab:Dropdown("Aim Point", {"Head", "Neck", "Chest"}, function(val) Aimbot.Settings.AimPoint = val end)
-mainTab:Dropdown("Aim Mode", {"Mouse", "Camera"}, function(val) Aimbot.Settings.Mode = val end)
-mainTab:Dropdown("Team Check", {"FFA", "Team-Based", "Everyone"}, function(val) Aimbot.Settings.TeamCheck = val end)
-mainTab:Toggle("Visible Check (no aim through walls)", Aimbot.Settings.WallCheck, function(val) Aimbot.Settings.WallCheck = val end)
-mainTab:Toggle("Show FOV Circle", Aimbot.Settings.ShowFOVCircle, function(val) Aimbot.Settings.ShowFOVCircle = val end)
-mainTab:Toggle("Debug Print", Aimbot.Settings.DebugPrint, function(val) Aimbot.Settings.DebugPrint = val end)
-mainTab:Label("Hold Right-Click to lock on. Right Shift = UI.")
+mainTab:Slider("Aim Speed (1 = slow, 50 = fast)", 1, 50, Aimbot.Settings.AimSpeed, function(val) Aimbot.Settings.AimSpeed = val end)
+mainTab:Slider("FOV Size", 10, 500, Aimbot.Settings.FOV, function(val) Aimbot.Settings.FOV = val end)
+mainTab:Label("Hold Right-Click to lock on.")
+mainTab:Label("Close UI: Right Shift / V / P")
 
 -- Input
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
-        Aimbot.State.UI.IsVisible = not Aimbot.State.UI.IsVisible
-        win.Enabled = Aimbot.State.UI.IsVisible
+    if input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.V then
+        Aimbot:ToggleUI()
     end
-    if input.UserInputType == Aimbot.Settings.TriggerKey then
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
         Aimbot.State.Running = true
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Aimbot.Settings.TriggerKey then
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
         Aimbot.State.Running = false
         Aimbot:CancelLock()
     end
@@ -165,7 +153,7 @@ end)
 RunService.RenderStepped:Connect(function()
     pcall(function()
         if Aimbot.FOVCircle then
-            Aimbot.FOVCircle.Visible = Aimbot.Settings.Enabled and Aimbot.Settings.ShowFOVCircle and Aimbot.State.Running
+            Aimbot.FOVCircle.Visible = Aimbot.Settings.Enabled and Aimbot.State.Running
             if Aimbot.FOVCircle.Visible then
                 Aimbot.FOVCircle.Radius = Aimbot.Settings.FOV
                 Aimbot.FOVCircle.Position = UserInputService:GetMouseLocation()
@@ -178,42 +166,30 @@ RunService.RenderStepped:Connect(function()
             if Aimbot.State.Locked then
                 local character = Aimbot.State.Locked.Character
                 local aimPosition = Aimbot:GetAimPosition(character)
-                if aimPosition then
+                if aimPosition and mousemoverel then
                     local now = tick()
                     local dt = math.min(now - Aimbot.State.LastTime, 0.1)
                     Aimbot.State.LastTime = now
 
-                    if Aimbot.Settings.Mode == "Mouse" and mousemoverel then
-                        local vector = Camera:WorldToViewportPoint(aimPosition)
-                        local mousePos = UserInputService:GetMouseLocation()
-                        local dx = vector.X - mousePos.X
-                        local dy = vector.Y - mousePos.Y
-                        local magnitude = math.sqrt(dx * dx + dy * dy)
+                    local vector = Camera:WorldToViewportPoint(aimPosition)
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local dx = vector.X - mousePos.X
+                    local dy = vector.Y - mousePos.Y
+                    local magnitude = math.sqrt(dx * dx + dy * dy)
 
-                        if Aimbot.Settings.DebugPrint and (now - Aimbot.State.LastDebug) > 2 then
-                            Aimbot.State.LastDebug = now
-                            print(string.format("[W1lte] Aim=%.0f,%.0f Mouse=%.0f,%.0f Delta=%.0f,%.0f Mag=%.1f Point=%s",
-                                vector.X, vector.Y, mousePos.X, mousePos.Y, dx, dy, magnitude, Aimbot.Settings.AimPoint))
+                    if magnitude > 0.7 then
+                        local factor = Aimbot:GetSmoothFactor(dt)
+                        local mx = math.clamp(dx * factor, -25, 25)
+                        local my = math.clamp(dy * factor, -25, 25)
+                        local m2 = math.sqrt(mx * mx + my * my)
+
+                        if m2 < 2 then
+                            local scale = 2 / math.max(m2, 0.01)
+                            mx = mx * scale
+                            my = my * scale
                         end
 
-                        if magnitude > 0.7 then
-                            local factor = Aimbot:GetSmoothFactor(dt)
-                            local mx = dx * factor
-                            local my = dy * factor
-                            local m2 = math.sqrt(mx * mx + my * my)
-
-                            if m2 < 2 then
-                                local scale = 2 / math.max(m2, 0.01)
-                                mx = mx * scale
-                                my = my * scale
-                            end
-
-                            mx = math.clamp(mx, -25, 25)
-                            my = math.clamp(my, -25, 25)
-                            mousemoverel(mx, my)
-                        end
-                    else
-                        Camera.CFrame = CFrame.new(Camera.CFrame.Position, aimPosition)
+                        mousemoverel(mx, my)
                     end
 
                     if Aimbot.FOVCircle then
@@ -227,7 +203,7 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded v9.0! Hold Right-Click to lock on. Right Shift to toggle UI.")
+print("[W1lteGameYT Hub] Loaded v10.0! Right Shift / V / P = close UI. RMB = aim.")
 
 end)
 
