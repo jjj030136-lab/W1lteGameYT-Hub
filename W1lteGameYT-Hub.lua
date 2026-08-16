@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v4.0")
+print("[W1lteGameYT Hub] Loading... v5.0")
 
 local success, err = pcall(function()
 
@@ -25,7 +25,8 @@ AdvanceTech.Settings = {
         ActivationDelay = 0.07,
         ActivationKey = Enum.UserInputType.MouseButton2,
         AimHeight = -0.35,
-        VisibleCheck = true
+        VisibleCheck = true,
+        CameraLock = true
     }
 }
 
@@ -33,7 +34,10 @@ AdvanceTech.State = {
     Aimbot = {
         IsKeyDown = false,
         KeyDownTimestamp = 0,
-        LastTime = 0
+        LastTime = 0,
+        SensX = 1,
+        SensY = 1,
+        Calib = { Stage = nil, Frames = 0, StartYaw = 0, StartPitch = 0, NextAt = 2 }
     },
     UI = {
         IsVisible = true,
@@ -103,7 +107,7 @@ end
 
 -- Main Tab
 local mainTab = win:Tab("Main")
-mainTab:Label("> Aimbot (Camera Lock / Head)")
+mainTab:Label("> Aimbot (Head Lock)")
 mainTab:Toggle("Enable Aimbot", AdvanceTech.Settings.Aimbot.Enabled, function(val) AdvanceTech.Settings.Aimbot.Enabled = val end)
 mainTab:Slider("FOV Radius", 10, 500, AdvanceTech.Settings.Aimbot.FOV, function(val) AdvanceTech.Settings.Aimbot.FOV = val end)
 mainTab:Slider("Aim Smoothing", 1, 50, AdvanceTech.Settings.Aimbot.Smoothing, function(val) AdvanceTech.Settings.Aimbot.Smoothing = val end)
@@ -111,8 +115,9 @@ mainTab:Slider("Activation Delay", 0, 50, AdvanceTech.Settings.Aimbot.Activation
 mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, AdvanceTech.Settings.Aimbot.AimHeight, function(val) AdvanceTech.Settings.Aimbot.AimHeight = val end)
 mainTab:Dropdown("Team Check", {"FFA", "Team-Based", "Everyone"}, function(val) AdvanceTech.Settings.Aimbot.TeamCheck = val end)
 mainTab:Toggle("Visible Check (no aim through walls)", AdvanceTech.Settings.Aimbot.VisibleCheck, function(val) AdvanceTech.Settings.Aimbot.VisibleCheck = val end)
+mainTab:Toggle("Camera Lock", AdvanceTech.Settings.Aimbot.CameraLock, function(val) AdvanceTech.Settings.Aimbot.CameraLock = val end)
 mainTab:Toggle("Show FOV Circle", AdvanceTech.Settings.Aimbot.ShowFOVCircle, function(val) AdvanceTech.Settings.Aimbot.ShowFOVCircle = val end)
-mainTab:Label("Camera always locks on the Head.")
+mainTab:Label("Auto-calibrates game sensitivity, aims exactly at Head.")
 mainTab:Label("Hold Right-Click to Activate Aimbot.")
 mainTab:Label("Press Right Shift to Open/Close the UI.")
 
@@ -152,6 +157,42 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
             end
         end
 
+        -- Auto-calibrate game mouse sensitivity (only when not aiming)
+        if mousemoverel and not aimbotState.IsKeyDown and tick() >= aimbotState.Calib.NextAt then
+            aimbotState.Calib.NextAt = tick() + 15
+            local yaw, pitch = Camera.CFrame:ToEulerAnglesYXZ()
+            aimbotState.Calib.Stage = "X"
+            aimbotState.Calib.Frames = 0
+            aimbotState.Calib.StartYaw = yaw
+            aimbotState.Calib.StartPitch = pitch
+            mousemoverel(30, 0)
+        end
+
+        if mousemoverel and aimbotState.Calib.Stage then
+            aimbotState.Calib.Frames = aimbotState.Calib.Frames + 1
+            if aimbotState.Calib.Frames >= 3 then
+                local yaw, pitch = Camera.CFrame:ToEulerAnglesYXZ()
+                local dyaw = (yaw - aimbotState.Calib.StartYaw + math.pi) % (2 * math.pi) - math.pi
+                local dpitch = pitch - aimbotState.Calib.StartPitch
+
+                if aimbotState.Calib.Stage == "X" then
+                    if math.abs(dyaw) > 0.001 then
+                        aimbotState.SensX = math.deg(dyaw) / 30
+                    end
+                    aimbotState.Calib.Stage = "Y"
+                    aimbotState.Calib.Frames = 0
+                    aimbotState.Calib.StartYaw = yaw
+                    aimbotState.Calib.StartPitch = pitch
+                    mousemoverel(0, 30)
+                else
+                    if math.abs(dpitch) > 0.001 then
+                        aimbotState.SensY = math.deg(dpitch) / 30
+                    end
+                    aimbotState.Calib.Stage = nil
+                end
+            end
+        end
+
         if aimbot.Enabled and aimbotState.IsKeyDown and (tick() - aimbotState.KeyDownTimestamp > aimbot.ActivationDelay) then
             local now = tick()
             local dt = math.min(now - aimbotState.LastTime, 0.1)
@@ -159,19 +200,44 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
 
             local target = AdvanceTech:GetBestTarget()
             if target and (not aimbot.VisibleCheck or AdvanceTech:IsTargetVisible(target.Part)) then
-                local desired = CFrame.lookAt(Camera.CFrame.Position, target.AimPosition)
-                local angle = math.deg(math.acos(math.clamp(desired.LookVector:Dot(Camera.CFrame.LookVector), -1, 1)))
+                local factor = AdvanceTech:GetSmoothFactor(aimbot.Smoothing, dt)
 
-                if angle > 0.02 then
-                    local factor = AdvanceTech:GetSmoothFactor(aimbot.Smoothing, dt)
-                    Camera.CFrame = Camera.CFrame:Lerp(desired, factor)
+                -- Angle-based mouse aim with sensitivity compensation
+                if mousemoverel then
+                    local localPos = Camera.CFrame:PointToObjectSpace(target.AimPosition)
+                    if localPos.Z > 0 then
+                        local yawAngle = math.atan(localPos.X / math.max(localPos.Z, 0.01))
+                        local pitchAngle = math.atan(localPos.Y / math.max(localPos.Z, 0.01))
+
+                        local sensX = math.max(math.abs(aimbotState.SensX), 0.001)
+                        local sensY = math.max(math.abs(aimbotState.SensY), 0.001)
+
+                        local dx = math.deg(yawAngle) / sensX * (aimbotState.SensX < 0 and -1 or 1)
+                        local dy = math.deg(pitchAngle) / sensY * (aimbotState.SensY < 0 and -1 or 1)
+
+                        dx = math.clamp(dx * factor, -30, 30)
+                        dy = math.clamp(dy * factor, -30, 30)
+
+                        if math.abs(dx) > 0.4 or math.abs(dy) > 0.4 then
+                            mousemoverel(dx, dy)
+                        end
+                    end
+                end
+
+                -- Camera lock as extra grip (works in games that respect it)
+                if aimbot.CameraLock then
+                    local desired = CFrame.lookAt(Camera.CFrame.Position, target.AimPosition)
+                    local angle = math.deg(math.acos(math.clamp(desired.LookVector:Dot(Camera.CFrame.LookVector), -1, 1)))
+                    if angle > 0.02 then
+                        Camera.CFrame = Camera.CFrame:Lerp(desired, math.min(factor, 0.35))
+                    end
                 end
             end
         end
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded v4.0! Press Right Shift or P to open/close the UI.")
+print("[W1lteGameYT Hub] Loaded v5.0! Press Right Shift or P to open/close the UI.")
 
 end)
 
