@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v7.0")
+print("[W1lteGameYT Hub] Loading... v7.1")
 
 local success, err = pcall(function()
 
@@ -28,7 +28,8 @@ AdvanceTech.Settings = {
         VisibleCheck = true,
         MaxMovePerFrame = 20,
         MinMovePerFrame = 3,
-        CameraLock = false
+        CameraLock = false,
+        DebugPrint = false
     }
 }
 
@@ -115,6 +116,7 @@ mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, AdvanceTech.Settin
 mainTab:Dropdown("Team Check", {"FFA", "Team-Based", "Everyone"}, function(val) AdvanceTech.Settings.Aimbot.TeamCheck = val end)
 mainTab:Toggle("Visible Check (no aim through walls)", AdvanceTech.Settings.Aimbot.VisibleCheck, function(val) AdvanceTech.Settings.Aimbot.VisibleCheck = val end)
 mainTab:Toggle("Camera Lock", AdvanceTech.Settings.Aimbot.CameraLock, function(val) AdvanceTech.Settings.Aimbot.CameraLock = val end)
+mainTab:Toggle("Debug Print", AdvanceTech.Settings.Aimbot.DebugPrint, function(val) AdvanceTech.Settings.Aimbot.DebugPrint = val end)
 mainTab:Toggle("Show FOV Circle", AdvanceTech.Settings.Aimbot.ShowFOVCircle, function(val) AdvanceTech.Settings.Aimbot.ShowFOVCircle = val end)
 mainTab:Label("Aims exactly at Head, smooth mouse movement.")
 mainTab:Label("Hold Right-Click to Activate Aimbot.")
@@ -168,6 +170,14 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
                     local mousePos = UserInputService:GetMouseLocation()
                     local moveVector = Vector2.new(targetScreenPos.X - mousePos.X, targetScreenPos.Y - mousePos.Y)
 
+                    if aimbot.DebugPrint and tick() - (aimbotState.LastDebug or 0) > 2 then
+                        aimbotState.LastDebug = tick()
+                        print(string.format("[W1lte] HeadScreen=%.0f,%.0f Mouse=%.0f,%.0f Delta=%.0f,%.0f Mag=%.0f AimPart=%s",
+                            targetScreenPos.X, targetScreenPos.Y, mousePos.X, mousePos.Y,
+                            moveVector.X, moveVector.Y, moveVector.Magnitude,
+                            target.Part.Name))
+                    end
+
                     if moveVector.Magnitude > 1 then
                         local factor = AdvanceTech:GetSmoothFactor(aimbot.Smoothing, dt)
                         local dx = moveVector.X * factor
@@ -198,7 +208,7 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded v7.0! Press Right Shift or P to open/close the UI.")
+print("[W1lteGameYT Hub] Loaded v7.1! Press Right Shift or P to open/close the UI.")
 
 end)
 
