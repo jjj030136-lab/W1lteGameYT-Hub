@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v2.0")
+print("[W1lteGameYT Hub] Loading... v2.2")
 
 local success, err = pcall(function()
 
@@ -31,6 +31,14 @@ AdvanceTech.Settings = {
         MaxMovePerFrame = 40,
         Noise = 0.35
     },
+    ESP = {
+        Enabled = true,
+        ShowBoxes = true,
+        ShowLines = true,
+        ShowNames = true,
+        ShowDistance = true,
+        UseTeamColor = false
+    },
     Privacy = {
         AntiSpectate = true
     }
@@ -41,6 +49,9 @@ AdvanceTech.State = {
         IsKeyDown = false,
         KeyDownTimestamp = 0,
         LastTime = 0
+    },
+    ESP = {
+        Pools = {}
     },
     Privacy = {
         OriginalTransparencies = {}
@@ -141,6 +152,34 @@ function AdvanceTech:GetSmoothFactor(smoothing, dt)
     return 1 - math.exp(-rate * dt)
 end
 
+function AdvanceTech:GetESPPool(player)
+    local pool = self.State.ESP.Pools[player]
+    if not pool then
+        pool = {
+            Box = Drawing.new("Square"),
+            Line = Drawing.new("Line"),
+            Text = Drawing.new("Text")
+        }
+        pool.Box.Thickness = 1
+        pool.Box.Filled = false
+        pool.Box.Color = Color3.fromRGB(255, 50, 50)
+        pool.Line.Thickness = 1
+        pool.Line.Color = Color3.fromRGB(255, 50, 50)
+        pool.Text.Size = 13
+        pool.Text.Center = true
+        pool.Text.Outline = true
+        pool.Text.Color = Color3.fromRGB(255, 255, 255)
+        AdvanceTech.State.ESP.Pools[player] = pool
+    end
+    return pool
+end
+
+function AdvanceTech:ResetESPPool(pool)
+    pool.Box.Visible = false
+    pool.Line.Visible = false
+    pool.Text.Visible = false
+end
+
 -- Main Tab
 local mainTab = win:Tab("Main")
 mainTab:Label("> Aimbot / Target Lock")
@@ -155,7 +194,15 @@ mainTab:Toggle("Visible Check (no aim through walls)", AdvanceTech.Settings.Aimb
 mainTab:Dropdown("Team Check", {"FFA", "Team-Based", "Everyone"}, function(val) AdvanceTech.Settings.Aimbot.TeamCheck = val end)
 mainTab:Toggle("Show FOV Circle", AdvanceTech.Settings.Aimbot.ShowFOVCircle, function(val) AdvanceTech.Settings.Aimbot.ShowFOVCircle = val end)
 mainTab:Toggle("Anti Spectate (invisible)", AdvanceTech.Settings.Privacy.AntiSpectate, function(val) AdvanceTech.Settings.Privacy.AntiSpectate = val end)
+mainTab:Label("> Wallhack / ESP")
+mainTab:Toggle("Enable ESP", AdvanceTech.Settings.ESP.Enabled, function(val) AdvanceTech.Settings.ESP.Enabled = val end)
+mainTab:Toggle("Boxes", AdvanceTech.Settings.ESP.ShowBoxes, function(val) AdvanceTech.Settings.ESP.ShowBoxes = val end)
+mainTab:Toggle("Tracer Lines", AdvanceTech.Settings.ESP.ShowLines, function(val) AdvanceTech.Settings.ESP.ShowLines = val end)
+mainTab:Toggle("Names", AdvanceTech.Settings.ESP.ShowNames, function(val) AdvanceTech.Settings.ESP.ShowNames = val end)
+mainTab:Toggle("Distance", AdvanceTech.Settings.ESP.ShowDistance, function(val) AdvanceTech.Settings.ESP.ShowDistance = val end)
+mainTab:Toggle("Team Color", AdvanceTech.Settings.ESP.UseTeamColor, function(val) AdvanceTech.Settings.ESP.UseTeamColor = val end)
 mainTab:Label("Hold Right-Click to Activate Aimbot.")
+mainTab:Label("Aimbot works through walls (Visible Check = off).")
 mainTab:Label("Press Right Shift to Open/Close the UI.")
 
 local FOVCircle = AdvanceTech.State.UI.FOVCircle
@@ -193,12 +240,87 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
 
         local aimbot = AdvanceTech.Settings.Aimbot
         local aimbotState = AdvanceTech.State.Aimbot
+        local espSettings = AdvanceTech.Settings.ESP
 
         if FOVCircle then
             FOVCircle.Visible = aimbot.Enabled and aimbot.ShowFOVCircle and aimbotState.IsKeyDown
             if FOVCircle.Visible then
                 FOVCircle.Position = UserInputService:GetMouseLocation()
                 FOVCircle.Radius = aimbot.FOV
+            end
+        end
+
+        if espSettings.Enabled and HasDrawing then
+            local seen = {}
+            for _, player in ipairs(Players:GetPlayers()) do
+                if AdvanceTech:IsEnemy(player) then
+                    local character = player.Character
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+                    if character and humanoid and humanoid.Health > 0 then
+                        local head = character:FindFirstChild("Head")
+                        local hrp = character:FindFirstChild("HumanoidRootPart")
+
+                        if head and hrp then
+                            local topPos, topOn = Camera:WorldToScreenPoint(head.Position + Vector3.new(0, 0.5, 0))
+                            local botPos, botOn = Camera:WorldToScreenPoint(hrp.Position - Vector3.new(0, 2, 0))
+
+                            if topOn and botOn then
+                                seen[player] = true
+                                local pool = AdvanceTech:GetESPPool(player)
+
+                                local height = math.max(topPos.Y - botPos.Y, 10)
+                                local width = height * 0.7
+                                local centerX = (topPos.X + botPos.X) / 2
+                                local boxX = centerX - width / 2
+                                local boxY = topPos.Y
+
+                                local color = espSettings.UseTeamColor and player.TeamColor.Color or Color3.fromRGB(255, 50, 50)
+                                pool.Box.Color = color
+                                pool.Line.Color = color
+
+                                pool.Box.Visible = espSettings.ShowBoxes
+                                if pool.Box.Visible then
+                                    pool.Box.Position = Vector2.new(boxX, boxY)
+                                    pool.Box.Size = Vector2.new(width, height)
+                                end
+
+                                pool.Line.Visible = espSettings.ShowLines
+                                if pool.Line.Visible then
+                                    pool.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                                    pool.Line.To = Vector2.new(centerX, botPos.Y)
+                                end
+
+                                pool.Text.Visible = espSettings.ShowNames
+                                if pool.Text.Visible then
+                                    local text = player.Name
+                                    if espSettings.ShowDistance then
+                                        local dist = math.floor((Camera.CFrame.Position - hrp.Position).Magnitude)
+                                        text = text .. " [" .. dist .. "m]"
+                                    end
+                                    pool.Text.Text = text
+                                    pool.Text.Position = Vector2.new(centerX, boxY - 15)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            for player, pool in pairs(AdvanceTech.State.ESP.Pools) do
+                if not seen[player] then
+                    AdvanceTech:ResetESPPool(pool)
+                end
+                if player.Parent == nil then
+                    pool.Box:Remove()
+                    pool.Line:Remove()
+                    pool.Text:Remove()
+                    AdvanceTech.State.ESP.Pools[player] = nil
+                end
+            end
+        else
+            for _, pool in pairs(AdvanceTech.State.ESP.Pools) do
+                AdvanceTech:ResetESPPool(pool)
             end
         end
 
@@ -242,7 +364,7 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded v2.0! Press Right Shift or P to open/close the UI.")
+print("[W1lteGameYT Hub] Loaded v2.2! Press Right Shift or P to open/close the UI.")
 
 end)
 
