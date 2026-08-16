@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v3.0")
+print("[W1lteGameYT Hub] Loading... v4.0")
 
 local success, err = pcall(function()
 
@@ -103,7 +103,7 @@ end
 
 -- Main Tab
 local mainTab = win:Tab("Main")
-mainTab:Label("> Aimbot")
+mainTab:Label("> Aimbot (Camera Lock / Head)")
 mainTab:Toggle("Enable Aimbot", AdvanceTech.Settings.Aimbot.Enabled, function(val) AdvanceTech.Settings.Aimbot.Enabled = val end)
 mainTab:Slider("FOV Radius", 10, 500, AdvanceTech.Settings.Aimbot.FOV, function(val) AdvanceTech.Settings.Aimbot.FOV = val end)
 mainTab:Slider("Aim Smoothing", 1, 50, AdvanceTech.Settings.Aimbot.Smoothing, function(val) AdvanceTech.Settings.Aimbot.Smoothing = val end)
@@ -112,7 +112,7 @@ mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, AdvanceTech.Settin
 mainTab:Dropdown("Team Check", {"FFA", "Team-Based", "Everyone"}, function(val) AdvanceTech.Settings.Aimbot.TeamCheck = val end)
 mainTab:Toggle("Visible Check (no aim through walls)", AdvanceTech.Settings.Aimbot.VisibleCheck, function(val) AdvanceTech.Settings.Aimbot.VisibleCheck = val end)
 mainTab:Toggle("Show FOV Circle", AdvanceTech.Settings.Aimbot.ShowFOVCircle, function(val) AdvanceTech.Settings.Aimbot.ShowFOVCircle = val end)
-mainTab:Label("Aim is locked to Head.")
+mainTab:Label("Camera always locks on the Head.")
 mainTab:Label("Hold Right-Click to Activate Aimbot.")
 mainTab:Label("Press Right Shift to Open/Close the UI.")
 
@@ -159,24 +159,19 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
 
             local target = AdvanceTech:GetBestTarget()
             if target and (not aimbot.VisibleCheck or AdvanceTech:IsTargetVisible(target.Part)) then
-                local targetScreenPos, onScreen = Camera:WorldToScreenPoint(target.AimPosition)
-                if onScreen and mousemoverel then
-                    local mousePos = UserInputService:GetMouseLocation()
-                    local moveVector = Vector2.new(targetScreenPos.X - mousePos.X, targetScreenPos.Y - mousePos.Y)
+                local desired = CFrame.lookAt(Camera.CFrame.Position, target.AimPosition)
+                local angle = math.deg(math.acos(math.clamp(desired.LookVector:Dot(Camera.CFrame.LookVector), -1, 1)))
 
-                    if moveVector.Magnitude > 0.5 then
-                        local factor = AdvanceTech:GetSmoothFactor(aimbot.Smoothing, dt)
-                        local dx = math.clamp(moveVector.X * factor, -40, 40)
-                        local dy = math.clamp(moveVector.Y * factor, -40, 40)
-                        mousemoverel(dx, dy)
-                    end
+                if angle > 0.02 then
+                    local factor = AdvanceTech:GetSmoothFactor(aimbot.Smoothing, dt)
+                    Camera.CFrame = Camera.CFrame:Lerp(desired, factor)
                 end
             end
         end
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded v3.0! Press Right Shift or P to open/close the UI.")
+print("[W1lteGameYT Hub] Loaded v4.0! Press Right Shift or P to open/close the UI.")
 
 end)
 
