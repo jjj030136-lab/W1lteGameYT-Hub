@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v6.0")
+print("[W1lteGameYT Hub] Loading... v7.0")
 
 local success, err = pcall(function()
 
@@ -21,12 +21,14 @@ AdvanceTech.Settings = {
         TeamCheck = "FFA",
         FOV = 120,
         ShowFOVCircle = true,
-        Smoothing = 15,
+        Smoothing = 12,
         ActivationDelay = 0.07,
         ActivationKey = Enum.UserInputType.MouseButton2,
-        AimHeight = -0.7,
+        AimHeight = -0.8,
         VisibleCheck = true,
-        MaxMovePerFrame = 25
+        MaxMovePerFrame = 20,
+        MinMovePerFrame = 3,
+        CameraLock = false
     }
 }
 
@@ -112,6 +114,7 @@ mainTab:Slider("Activation Delay", 0, 50, AdvanceTech.Settings.Aimbot.Activation
 mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, AdvanceTech.Settings.Aimbot.AimHeight, function(val) AdvanceTech.Settings.Aimbot.AimHeight = val end)
 mainTab:Dropdown("Team Check", {"FFA", "Team-Based", "Everyone"}, function(val) AdvanceTech.Settings.Aimbot.TeamCheck = val end)
 mainTab:Toggle("Visible Check (no aim through walls)", AdvanceTech.Settings.Aimbot.VisibleCheck, function(val) AdvanceTech.Settings.Aimbot.VisibleCheck = val end)
+mainTab:Toggle("Camera Lock", AdvanceTech.Settings.Aimbot.CameraLock, function(val) AdvanceTech.Settings.Aimbot.CameraLock = val end)
 mainTab:Toggle("Show FOV Circle", AdvanceTech.Settings.Aimbot.ShowFOVCircle, function(val) AdvanceTech.Settings.Aimbot.ShowFOVCircle = val end)
 mainTab:Label("Aims exactly at Head, smooth mouse movement.")
 mainTab:Label("Hold Right-Click to Activate Aimbot.")
@@ -167,9 +170,27 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
 
                     if moveVector.Magnitude > 1 then
                         local factor = AdvanceTech:GetSmoothFactor(aimbot.Smoothing, dt)
-                        local dx = math.clamp(moveVector.X * factor, -aimbot.MaxMovePerFrame, aimbot.MaxMovePerFrame)
-                        local dy = math.clamp(moveVector.Y * factor, -aimbot.MaxMovePerFrame, aimbot.MaxMovePerFrame)
+                        local dx = moveVector.X * factor
+                        local dy = moveVector.Y * factor
+                        local magnitude = math.sqrt(dx * dx + dy * dy)
+
+                        if magnitude > 0 and magnitude < aimbot.MinMovePerFrame then
+                            local scale = aimbot.MinMovePerFrame / magnitude
+                            dx = dx * scale
+                            dy = dy * scale
+                        end
+
+                        dx = math.clamp(dx, -aimbot.MaxMovePerFrame, aimbot.MaxMovePerFrame)
+                        dy = math.clamp(dy, -aimbot.MaxMovePerFrame, aimbot.MaxMovePerFrame)
                         mousemoverel(dx, dy)
+                    end
+                end
+
+                if aimbot.CameraLock then
+                    local desired = CFrame.lookAt(Camera.CFrame.Position, target.AimPosition)
+                    local angle = math.deg(math.acos(math.clamp(desired.LookVector:Dot(Camera.CFrame.LookVector), -1, 1)))
+                    if angle > 0.02 then
+                        Camera.CFrame = Camera.CFrame:Lerp(desired, math.min(factor, 0.3))
                     end
                 end
             end
@@ -177,7 +198,7 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded v6.0! Press Right Shift or P to open/close the UI.")
+print("[W1lteGameYT Hub] Loaded v7.0! Press Right Shift or P to open/close the UI.")
 
 end)
 
