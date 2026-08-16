@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading...")
+print("[W1lteGameYT Hub] Loading... v2.0")
 
 local success, err = pcall(function()
 
@@ -7,7 +7,6 @@ local HasDrawing = pcall(function() local d = Drawing.new("Circle") d:Remove() e
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
@@ -26,7 +25,11 @@ AdvanceTech.Settings = {
         ActivationDelay = 0.07,
         ActivationKey = Enum.UserInputType.MouseButton2,
         AimPart = "Head",
-        HeadOffset = -0.5
+        AimHeight = -0.5,
+        Mode = "Mouse",
+        VisibleCheck = false,
+        MaxMovePerFrame = 40,
+        Noise = 0.35
     },
     Privacy = {
         AntiSpectate = true
@@ -36,7 +39,8 @@ AdvanceTech.Settings = {
 AdvanceTech.State = {
     Aimbot = {
         IsKeyDown = false,
-        KeyDownTimestamp = 0
+        KeyDownTimestamp = 0,
+        LastTime = 0
     },
     Privacy = {
         OriginalTransparencies = {}
@@ -46,6 +50,8 @@ AdvanceTech.State = {
         FOVCircle = HasDrawing and Drawing.new("Circle") or nil
     }
 }
+
+local RNG = Random.new()
 
 function AdvanceTech:IsEnemy(player)
     if not player or player == LocalPlayer then return false end
@@ -73,20 +79,38 @@ function AdvanceTech:GetBestTarget()
             local targetPart = self:GetAimPart(character)
 
             if targetPart then
-                local aimPosition = targetPart.Position + Vector3.new(0, self.Settings.Aimbot.HeadOffset, 0)
+                local aimPosition = targetPart.Position + Vector3.new(0, self.Settings.Aimbot.AimHeight, 0)
                 local screenPos, onScreen = Camera:WorldToScreenPoint(aimPosition)
 
                 if onScreen then
                     local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                     if distance < smallestMagnitude then
                         smallestMagnitude = distance
-                        bestTarget = { AimPosition = aimPosition }
+                        bestTarget = { AimPosition = aimPosition, Part = targetPart }
                     end
                 end
             end
         end
     end
     return bestTarget
+end
+
+function AdvanceTech:IsTargetVisible(part)
+    if not part or not part.Parent then return true end
+
+    local filters = {}
+    if LocalPlayer.Character then
+        filters[#filters + 1] = LocalPlayer.Character
+    end
+    filters[#filters + 1] = part.Parent
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = filters
+
+    local origin = Camera.CFrame.Position
+    local result = workspace:Raycast(origin, part.Position - origin, rayParams)
+    return result == nil or (result.Instance and result.Instance:IsDescendantOf(part.Parent))
 end
 
 function AdvanceTech:RestoreAppearance()
@@ -112,6 +136,11 @@ function AdvanceTech:ApplyInvisibility()
     end
 end
 
+function AdvanceTech:GetSmoothFactor(smoothing, dt)
+    local rate = 50 / math.max(smoothing, 1)
+    return 1 - math.exp(-rate * dt)
+end
+
 -- Main Tab
 local mainTab = win:Tab("Main")
 mainTab:Label("> Aimbot / Target Lock")
@@ -119,12 +148,14 @@ mainTab:Toggle("Enable Aimbot", AdvanceTech.Settings.Aimbot.Enabled, function(va
 mainTab:Slider("FOV Radius", 10, 500, AdvanceTech.Settings.Aimbot.FOV, function(val) AdvanceTech.Settings.Aimbot.FOV = val end)
 mainTab:Slider("Aim Smoothing", 1, 50, AdvanceTech.Settings.Aimbot.Smoothing, function(val) AdvanceTech.Settings.Aimbot.Smoothing = val end)
 mainTab:Slider("Activation Delay", 0, 50, AdvanceTech.Settings.Aimbot.ActivationDelay * 100, function(val) AdvanceTech.Settings.Aimbot.ActivationDelay = val / 100 end)
-mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, AdvanceTech.Settings.Aimbot.HeadOffset, function(val) AdvanceTech.Settings.Aimbot.HeadOffset = val end)
+mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, AdvanceTech.Settings.Aimbot.AimHeight, function(val) AdvanceTech.Settings.Aimbot.AimHeight = val end)
 mainTab:Dropdown("Aim Part", {"Head", "Torso"}, function(val) AdvanceTech.Settings.Aimbot.AimPart = (val == "Torso") and "HumanoidRootPart" or "Head" end)
+mainTab:Dropdown("Aim Mode", {"Mouse", "Silent"}, function(val) AdvanceTech.Settings.Aimbot.Mode = val end)
+mainTab:Toggle("Visible Check (no aim through walls)", AdvanceTech.Settings.Aimbot.VisibleCheck, function(val) AdvanceTech.Settings.Aimbot.VisibleCheck = val end)
 mainTab:Dropdown("Team Check", {"FFA", "Team-Based", "Everyone"}, function(val) AdvanceTech.Settings.Aimbot.TeamCheck = val end)
 mainTab:Toggle("Show FOV Circle", AdvanceTech.Settings.Aimbot.ShowFOVCircle, function(val) AdvanceTech.Settings.Aimbot.ShowFOVCircle = val end)
+mainTab:Toggle("Anti Spectate (invisible)", AdvanceTech.Settings.Privacy.AntiSpectate, function(val) AdvanceTech.Settings.Privacy.AntiSpectate = val end)
 mainTab:Label("Hold Right-Click to Activate Aimbot.")
-mainTab:Label("Targeting is locked to Head.")
 mainTab:Label("Press Right Shift to Open/Close the UI.")
 
 local FOVCircle = AdvanceTech.State.UI.FOVCircle
@@ -172,14 +203,38 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
         end
 
         if aimbot.Enabled and aimbotState.IsKeyDown and (tick() - aimbotState.KeyDownTimestamp > aimbot.ActivationDelay) then
+            local now = tick()
+            local dt = math.min(now - aimbotState.LastTime, 0.1)
+            aimbotState.LastTime = now
+
             local target = AdvanceTech:GetBestTarget()
-            if target then
-                local targetScreenPos, onScreen = Camera:WorldToScreenPoint(target.AimPosition)
-                if onScreen then
-                    local mousePos = UserInputService:GetMouseLocation()
-                    local moveVector = Vector2.new(targetScreenPos.X - mousePos.X, targetScreenPos.Y - mousePos.Y)
-                    if mousemoverel then
-                        mousemoverel(moveVector.X / aimbot.Smoothing, moveVector.Y / aimbot.Smoothing)
+            if target and (not aimbot.VisibleCheck or AdvanceTech:IsTargetVisible(target.Part)) then
+                local factor = AdvanceTech:GetSmoothFactor(aimbot.Smoothing, dt)
+
+                if aimbot.Mode == "Silent" then
+                    local desired = CFrame.lookAt(Camera.CFrame.Position, target.AimPosition)
+                    local angle = math.deg(math.acos(math.clamp(desired.LookVector:Dot(Camera.CFrame.LookVector), -1, 1)))
+                    if angle > 0.05 then
+                        Camera.CFrame = Camera.CFrame:Lerp(desired, factor)
+                    end
+                else
+                    local targetScreenPos, onScreen = Camera:WorldToScreenPoint(target.AimPosition)
+                    if onScreen then
+                        local mousePos = UserInputService:GetMouseLocation()
+                        local moveVector = Vector2.new(targetScreenPos.X - mousePos.X, targetScreenPos.Y - mousePos.Y)
+
+                        if moveVector.Magnitude > 0.5 and mousemoverel then
+                            local maxMove = aimbot.MaxMovePerFrame
+                            local dx = math.clamp(moveVector.X * factor, -maxMove, maxMove)
+                            local dy = math.clamp(moveVector.Y * factor, -maxMove, maxMove)
+
+                            if aimbot.Noise > 0 then
+                                dx = dx + RNG:NextNumber(-aimbot.Noise, aimbot.Noise)
+                                dy = dy + RNG:NextNumber(-aimbot.Noise, aimbot.Noise)
+                            end
+
+                            mousemoverel(dx, dy)
+                        end
                     end
                 end
             end
@@ -187,7 +242,7 @@ RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Valu
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded! Press Right Shift or P to open/close the UI.")
+print("[W1lteGameYT Hub] Loaded v2.0! Press Right Shift or P to open/close the UI.")
 
 end)
 
