@@ -1,12 +1,18 @@
-local Drawing = Drawing
-local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/UI-Libs/main/Vape.txt"))()
-local win = lib:Window("W1lteGameYT Hub", Color3.fromRGB(44, 120, 224), Enum.KeyCode.P)
+print("[W1lteGameYT Hub] Loading...")
+
+local success, err = pcall(function()
+
+local HasDrawing = pcall(function() local d = Drawing.new("Circle") d:Remove() end)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+
+local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/UI-Libs/main/Vape.txt"))()
+local win = lib:Window("W1lteGameYT Hub", Color3.fromRGB(44, 120, 224), Enum.KeyCode.P)
 
 local AdvanceTech = {}
 
@@ -37,7 +43,7 @@ AdvanceTech.State = {
     },
     UI = {
         IsVisible = true,
-        FOVCircle = Drawing.new("Circle")
+        FOVCircle = HasDrawing and Drawing.new("Circle") or nil
     }
 }
 
@@ -120,8 +126,10 @@ mainTab:Label("Hold Right-Click to Activate Aimbot.")
 mainTab:Label("Targeting is locked to Head.")
 mainTab:Label("Press Right Shift to Open/Close the UI.")
 
-local circle = AdvanceTech.State.UI.FOVCircle
-circle.Visible = false; circle.Thickness = 1; circle.Color = Color3.fromRGB(255, 255, 255); circle.Filled = false; circle.NumSides = 64
+local FOVCircle = AdvanceTech.State.UI.FOVCircle
+if FOVCircle then
+    FOVCircle.Visible = false; FOVCircle.Thickness = 1; FOVCircle.Color = Color3.fromRGB(255, 255, 255); FOVCircle.Filled = false; FOVCircle.NumSides = 64
+end
 
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
@@ -146,30 +154,43 @@ LocalPlayer.CharacterRemoving:Connect(function()
 end)
 
 RunService:BindToRenderStep("AdvanceTechRender", Enum.RenderPriority.Camera.Value + 1, function()
-    if AdvanceTech.Settings.Privacy.AntiSpectate then
-        AdvanceTech:ApplyInvisibility()
-    end
+    pcall(function()
+        if AdvanceTech.Settings.Privacy.AntiSpectate then
+            AdvanceTech:ApplyInvisibility()
+        end
 
-    local aimbot = AdvanceTech.Settings.Aimbot
-    local aimbotState = AdvanceTech.State.Aimbot
+        local aimbot = AdvanceTech.Settings.Aimbot
+        local aimbotState = AdvanceTech.State.Aimbot
 
-    circle.Visible = aimbot.Enabled and aimbot.ShowFOVCircle and aimbotState.IsKeyDown
-    if circle.Visible then
-        circle.Position = UserInputService:GetMouseLocation()
-        circle.Radius = aimbot.FOV
-    end
+        if FOVCircle then
+            FOVCircle.Visible = aimbot.Enabled and aimbot.ShowFOVCircle and aimbotState.IsKeyDown
+            if FOVCircle.Visible then
+                FOVCircle.Position = UserInputService:GetMouseLocation()
+                FOVCircle.Radius = aimbot.FOV
+            end
+        end
 
-    if aimbot.Enabled and aimbotState.IsKeyDown and (tick() - aimbotState.KeyDownTimestamp > aimbot.ActivationDelay) then
-        local target = AdvanceTech:GetBestTarget()
-        if target then
-            local targetScreenPos, onScreen = Camera:WorldToScreenPoint(target.AimPosition)
-            if onScreen then
-                local mousePos = UserInputService:GetMouseLocation()
-                local moveVector = Vector2.new(targetScreenPos.X - mousePos.X, targetScreenPos.Y - mousePos.Y)
-                if mousemoverel then
-                    mousemoverel(moveVector.X / aimbot.Smoothing, moveVector.Y / aimbot.Smoothing)
+        if aimbot.Enabled and aimbotState.IsKeyDown and (tick() - aimbotState.KeyDownTimestamp > aimbot.ActivationDelay) then
+            local target = AdvanceTech:GetBestTarget()
+            if target then
+                local targetScreenPos, onScreen = Camera:WorldToScreenPoint(target.AimPosition)
+                if onScreen then
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local moveVector = Vector2.new(targetScreenPos.X - mousePos.X, targetScreenPos.Y - mousePos.Y)
+                    if mousemoverel then
+                        mousemoverel(moveVector.X / aimbot.Smoothing, moveVector.Y / aimbot.Smoothing)
+                    end
                 end
             end
         end
-    end
+    end)
 end)
+
+print("[W1lteGameYT Hub] Loaded! Press Right Shift or P to open/close the UI.")
+
+end)
+
+if not success then
+    warn("[W1lteGameYT Hub] Error: " .. tostring(err))
+    warn("[W1lteGameYT Hub] Tip: enable HTTP requests (request) in your executor settings and use a PC executor like Fluxus/Synapse X.")
+end
