@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v11.0")
+print("[W1lteGameYT Hub] Loading... v14.0")
 
 local success, err = pcall(function()
 
@@ -158,13 +158,22 @@ end
 
 -- Menu
 local mainTab = win:Tab("Main")
-mainTab:Label("> Aimbot v13.0")
+mainTab:Label("> Aimbot v14.0")
 mainTab:Toggle("Enable Aimbot", Aimbot.Settings.Enabled, function(val) Aimbot.Settings.Enabled = val end)
 mainTab:Toggle("Team Check (skip teammates)", Aimbot.Settings.TeamCheck, function(val) Aimbot.Settings.TeamCheck = val end)
 mainTab:Dropdown("Aim Point", {"Neck", "Head", "Chest"}, function(val) Aimbot.Settings.AimPoint = val end)
 mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, Aimbot.Settings.AimHeight, function(val) Aimbot.Settings.AimHeight = val end)
 mainTab:Slider("Aim Speed (1 = slow, 50 = fast)", 1, 50, Aimbot.Settings.AimSpeed, function(val) Aimbot.Settings.AimSpeed = val end)
 mainTab:Slider("FOV Size", 10, 500, Aimbot.Settings.FOV, function(val) Aimbot.Settings.FOV = val end)
+local debugLabel = mainTab:Label("Teams: ... | Colors: ...")
+mainTab:Button("Debug: dump players to console", function()
+    print("[W1lteGameYT] ---- PLAYERS DUMP ----")
+    for _, p in ipairs(Players:GetPlayers()) do
+        local t = p.Team and p.Team.Name or "none"
+        print(p.Name .. " | Team: " .. t .. " | Color: " .. p.TeamColor.Name)
+    end
+    print("[W1lteGameYT] ---- END DUMP ----")
+end)
 mainTab:Label("Aims at ENEMIES only (team check on).")
 mainTab:Label("Open/Close UI: Right Shift only.")
 mainTab:Label("Hold Right-Click to lock on.")
@@ -188,10 +197,19 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- Main loop
+local errorsReported = 0
+
 RunService.RenderStepped:Connect(function()
     pcall(function()
         Aimbot.TeamCount, Aimbot.ColorCount = Aimbot:CountTeams()
+        pcall(function()
+            debugLabel:Text("Teams: " .. tostring(Aimbot.TeamCount) .. " | Colors: " .. tostring(Aimbot.ColorCount) ..
+                " | MyTeam: " .. tostring(LocalPlayer.Team and LocalPlayer.Team.Name or "none") ..
+                " | MyColor: " .. tostring(LocalPlayer.TeamColor and LocalPlayer.TeamColor.Name or "none"))
+        end)
+    end)
 
+    local ok, err = pcall(function()
         if Aimbot.FOVCircle then
             Aimbot.FOVCircle.Visible = Aimbot.Settings.Enabled and Aimbot.State.Running
             if Aimbot.FOVCircle.Visible then
@@ -241,9 +259,13 @@ RunService.RenderStepped:Connect(function()
             Aimbot:CancelLock()
         end
     end)
+    if not ok and errorsReported < 5 then
+        errorsReported = errorsReported + 1
+        warn("[W1lteGameYT Hub] Loop error: " .. tostring(err))
+    end
 end)
 
-print("[W1lteGameYT Hub] Loaded v13.0! Right Shift = UI. RMB = aim. Team check: Team/TeamColor auto.")
+print("[W1lteGameYT Hub] Loaded v14.0! Right Shift = UI. RMB = aim. Debug label shows team/color counts.")
 
 end)
 
