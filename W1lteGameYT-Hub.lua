@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v10.0")
+print("[W1lteGameYT Hub] Loading... v11.0")
 
 local success, err = pcall(function()
 
@@ -11,7 +11,7 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/UI-Libs/main/Vape.txt"))()
-local win = lib:Window("W1lteGameYT Hub", Color3.fromRGB(44, 120, 224), Enum.KeyCode.P)
+local win = lib:Window("W1lteGameYT Hub", Color3.fromRGB(44, 120, 224), Enum.KeyCode.F10)
 
 local Aimbot = {}
 
@@ -40,7 +40,19 @@ if Aimbot.FOVCircle then
 end
 
 function Aimbot:IsEnemy(player)
-    return player ~= nil and player ~= LocalPlayer
+    if not player or player == LocalPlayer then return false end
+
+    local myTeam = LocalPlayer.Team
+    if myTeam then
+        return player.Team ~= myTeam
+    end
+
+    local myColor = LocalPlayer.TeamColor
+    if myColor ~= BrickColor.new("Medium stone grey") and player.TeamColor ~= BrickColor.new("Medium stone grey") then
+        return player.TeamColor ~= myColor
+    end
+
+    return true
 end
 
 function Aimbot:GetAimPosition(character)
@@ -88,7 +100,7 @@ function Aimbot:GetClosestPlayer()
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         local mousePos = UserInputService:GetMouseLocation()
 
-        if not character or not humanoid or humanoid.Health <= 0 then
+        if not character or not humanoid or humanoid.Health <= 0 or not self:IsEnemy(self.State.Locked) then
             self:CancelLock()
             return
         end
@@ -120,21 +132,22 @@ function Aimbot:ToggleUI()
     end
 end
 
--- Menu (only what you asked for)
+-- Menu
 local mainTab = win:Tab("Main")
-mainTab:Label("> Aimbot v10.0")
+mainTab:Label("> Aimbot v11.0")
 mainTab:Toggle("Enable Aimbot", Aimbot.Settings.Enabled, function(val) Aimbot.Settings.Enabled = val end)
 mainTab:Dropdown("Aim Point", {"Neck", "Head", "Chest"}, function(val) Aimbot.Settings.AimPoint = val end)
 mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, Aimbot.Settings.AimHeight, function(val) Aimbot.Settings.AimHeight = val end)
 mainTab:Slider("Aim Speed (1 = slow, 50 = fast)", 1, 50, Aimbot.Settings.AimSpeed, function(val) Aimbot.Settings.AimSpeed = val end)
 mainTab:Slider("FOV Size", 10, 500, Aimbot.Settings.FOV, function(val) Aimbot.Settings.FOV = val end)
+mainTab:Label("Aims at ENEMIES only (team check on).")
+mainTab:Label("Open/Close UI: Right Shift only.")
 mainTab:Label("Hold Right-Click to lock on.")
-mainTab:Label("Close UI: Right Shift / V / P")
 
--- Input
+-- Input (Right Shift only)
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
-    if input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.V then
+    if input.KeyCode == Enum.KeyCode.RightShift then
         Aimbot:ToggleUI()
     end
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -203,7 +216,7 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded v10.0! Right Shift / V / P = close UI. RMB = aim.")
+print("[W1lteGameYT Hub] Loaded v11.0! Right Shift = UI. RMB = aim. Team check ON.")
 
 end)
 
