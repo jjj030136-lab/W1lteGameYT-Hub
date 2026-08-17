@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v15.0")
+print("[W1lteGameYT Hub] Loading... v16.0")
 
 local success, err = pcall(function()
 
@@ -18,6 +18,7 @@ local Aimbot = {}
 Aimbot.Settings = {
     Enabled = true,
     TeamCheck = false,
+    SkipFriends = false,
     AimPoint = "Neck",
     AimHeight = -0.8,
     AimSpeed = 10,
@@ -68,7 +69,17 @@ end
 
 function Aimbot:IsEnemy(player)
     if not player or player == LocalPlayer then return false end
-    if not self.Settings.TeamCheck then return true end
+    if not self.Settings.TeamCheck then
+        if self.Settings.SkipFriends then
+            local ok = pcall(function()
+                return player:IsFriendsWith(LocalPlayer.UserId)
+            end)
+            if ok then
+                return not player:IsFriendsWith(LocalPlayer.UserId)
+            end
+        end
+        return true
+    end
 
     -- real team mode: 2+ distinct team objects
     if self.TeamCount >= 2 then
@@ -166,10 +177,11 @@ end
 
 -- Menu
 local mainTab = win:Tab("Main")
-mainTab:Label("> Aimbot v15.0")
+mainTab:Label("> Aimbot v16.0")
 mainTab:Toggle("Enable Aimbot", Aimbot.Settings.Enabled, function(val) Aimbot.Settings.Enabled = val end)
 local debugLabel = mainTab:Label("Teams: ... | Colors: ...")
 mainTab:Toggle("Team Check (skip teammates)", Aimbot.Settings.TeamCheck, function(val) Aimbot.Settings.TeamCheck = val end)
+mainTab:Toggle("Skip Friends (party teammates)", Aimbot.Settings.SkipFriends, function(val) Aimbot.Settings.SkipFriends = val end)
 mainTab:Dropdown("Aim Point", {"Neck", "Head", "Chest"}, function(val) Aimbot.Settings.AimPoint = val end)
 mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, Aimbot.Settings.AimHeight, function(val) Aimbot.Settings.AimHeight = val end)
 mainTab:Slider("Aim Speed (1 = slow, 50 = fast)", 1, 50, Aimbot.Settings.AimSpeed, function(val) Aimbot.Settings.AimSpeed = val end)
@@ -276,7 +288,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("[W1lteGameYT Hub] Loaded v15.0! Right Shift = UI. RMB = aim. Team Check OFF by default.")
+print("[W1lteGameYT Hub] Loaded v16.0! Right Shift = UI. RMB = aim. Team Check OFF by default.")
 
 end)
 
