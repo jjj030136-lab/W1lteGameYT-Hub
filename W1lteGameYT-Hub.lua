@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v14.0")
+print("[W1lteGameYT Hub] Loading... v15.0")
 
 local success, err = pcall(function()
 
@@ -17,7 +17,7 @@ local Aimbot = {}
 
 Aimbot.Settings = {
     Enabled = true,
-    TeamCheck = true,
+    TeamCheck = false,
     AimPoint = "Neck",
     AimHeight = -0.8,
     AimSpeed = 10,
@@ -43,16 +43,24 @@ end
 function Aimbot:CountTeams()
     local teams, colors = {}, {}
     local teamCount, colorCount = 0, 0
+    local cameraPos = Camera and Camera.CFrame and Camera.CFrame.Position or Vector3.new()
     for _, p in ipairs(Players:GetPlayers()) do
-        local t = p.Team
-        if t and not teams[t] then
-            teams[t] = true
-            teamCount = teamCount + 1
-        end
-        local c = p.TeamColor
-        if c and c ~= BrickColor.new("Medium stone grey") and not colors[c] then
-            colors[c] = true
-            colorCount = colorCount + 1
+        local ch = p.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local dist = (hrp.Position - cameraPos).Magnitude
+            if dist <= 600 then
+                local t = p.Team
+                if t and not teams[t] then
+                    teams[t] = true
+                    teamCount = teamCount + 1
+                end
+                local c = p.TeamColor
+                if c and c ~= BrickColor.new("Medium stone grey") and not colors[c] then
+                    colors[c] = true
+                    colorCount = colorCount + 1
+                end
+            end
         end
     end
     return teamCount, colorCount
@@ -158,8 +166,9 @@ end
 
 -- Menu
 local mainTab = win:Tab("Main")
-mainTab:Label("> Aimbot v14.0")
+mainTab:Label("> Aimbot v15.0")
 mainTab:Toggle("Enable Aimbot", Aimbot.Settings.Enabled, function(val) Aimbot.Settings.Enabled = val end)
+local debugLabel = mainTab:Label("Teams: ... | Colors: ...")
 mainTab:Toggle("Team Check (skip teammates)", Aimbot.Settings.TeamCheck, function(val) Aimbot.Settings.TeamCheck = val end)
 mainTab:Dropdown("Aim Point", {"Neck", "Head", "Chest"}, function(val) Aimbot.Settings.AimPoint = val end)
 mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, Aimbot.Settings.AimHeight, function(val) Aimbot.Settings.AimHeight = val end)
@@ -203,9 +212,11 @@ RunService.RenderStepped:Connect(function()
     pcall(function()
         Aimbot.TeamCount, Aimbot.ColorCount = Aimbot:CountTeams()
         pcall(function()
-            debugLabel:Text("Teams: " .. tostring(Aimbot.TeamCount) .. " | Colors: " .. tostring(Aimbot.ColorCount) ..
-                " | MyTeam: " .. tostring(LocalPlayer.Team and LocalPlayer.Team.Name or "none") ..
-                " | MyColor: " .. tostring(LocalPlayer.TeamColor and LocalPlayer.TeamColor.Name or "none"))
+            if debugLabel and debugLabel.ButtonTitle then
+                debugLabel.ButtonTitle.Text = "Teams: " .. tostring(Aimbot.TeamCount) .. " | Colors: " .. tostring(Aimbot.ColorCount) ..
+                    " | MyTeam: " .. tostring(LocalPlayer.Team and LocalPlayer.Team.Name or "none") ..
+                    " | MyColor: " .. tostring(LocalPlayer.TeamColor and LocalPlayer.TeamColor.Name or "none")
+            end
         end)
     end)
 
@@ -265,7 +276,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("[W1lteGameYT Hub] Loaded v14.0! Right Shift = UI. RMB = aim. Debug label shows team/color counts.")
+print("[W1lteGameYT Hub] Loaded v15.0! Right Shift = UI. RMB = aim. Team Check OFF by default.")
 
 end)
 
