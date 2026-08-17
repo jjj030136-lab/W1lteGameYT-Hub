@@ -17,6 +17,7 @@ local Aimbot = {}
 
 Aimbot.Settings = {
     Enabled = true,
+    TeamCheck = true,
     AimPoint = "Neck",
     AimHeight = -0.8,
     AimSpeed = 10,
@@ -39,20 +40,29 @@ if Aimbot.FOVCircle then
     Aimbot.FOVCircle.NumSides = 64
 end
 
+function Aimbot:GetTeamCount()
+    local teams = {}
+    local count = 0
+    for _, p in ipairs(Players:GetPlayers()) do
+        local t = p.Team
+        if t and not teams[t] then
+            teams[t] = true
+            count = count + 1
+        end
+    end
+    return count
+end
+
 function Aimbot:IsEnemy(player)
     if not player or player == LocalPlayer then return false end
+    if not self.Settings.TeamCheck then return true end
 
-    local myTeam = LocalPlayer.Team
-    if myTeam then
-        return player.Team ~= myTeam
+    -- if the whole server shares ONE team (or none), it's FFA -> everyone is an enemy
+    if self.TeamCount <= 1 then
+        return true
     end
 
-    local myColor = LocalPlayer.TeamColor
-    if myColor ~= BrickColor.new("Medium stone grey") and player.TeamColor ~= BrickColor.new("Medium stone grey") then
-        return player.TeamColor ~= myColor
-    end
-
-    return true
+    return player.Team ~= LocalPlayer.Team
 end
 
 function Aimbot:GetAimPosition(character)
@@ -134,8 +144,9 @@ end
 
 -- Menu
 local mainTab = win:Tab("Main")
-mainTab:Label("> Aimbot v11.0")
+mainTab:Label("> Aimbot v12.0")
 mainTab:Toggle("Enable Aimbot", Aimbot.Settings.Enabled, function(val) Aimbot.Settings.Enabled = val end)
+mainTab:Toggle("Team Check (skip teammates)", Aimbot.Settings.TeamCheck, function(val) Aimbot.Settings.TeamCheck = val end)
 mainTab:Dropdown("Aim Point", {"Neck", "Head", "Chest"}, function(val) Aimbot.Settings.AimPoint = val end)
 mainTab:Slider("Aim Height (-2 = lower, +2 = higher)", -2, 2, Aimbot.Settings.AimHeight, function(val) Aimbot.Settings.AimHeight = val end)
 mainTab:Slider("Aim Speed (1 = slow, 50 = fast)", 1, 50, Aimbot.Settings.AimSpeed, function(val) Aimbot.Settings.AimSpeed = val end)
@@ -165,6 +176,8 @@ end)
 -- Main loop
 RunService.RenderStepped:Connect(function()
     pcall(function()
+        Aimbot.TeamCount = Aimbot:GetTeamCount()
+
         if Aimbot.FOVCircle then
             Aimbot.FOVCircle.Visible = Aimbot.Settings.Enabled and Aimbot.State.Running
             if Aimbot.FOVCircle.Visible then
@@ -216,7 +229,7 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
-print("[W1lteGameYT Hub] Loaded v11.0! Right Shift = UI. RMB = aim. Team check ON.")
+print("[W1lteGameYT Hub] Loaded v12.0! Right Shift = UI. RMB = aim. Team check ON (auto FFA).")
 
 end)
 
