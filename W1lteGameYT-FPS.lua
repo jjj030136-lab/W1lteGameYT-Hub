@@ -1,4 +1,4 @@
-print("[W1lteGameYT FPS] Loading... v1.1")
+print("[W1lteGameYT FPS] Loading... v1.2")
 
 local success, err = pcall(function()
 
@@ -22,8 +22,9 @@ FPS.Settings = {
     Particles = false,
     Bright = true,
     FPSLimit = 0,
-    Blurred = true,
+    Blurred = false,
     BlurSize = 20,
+    Flatten = true,
     ShowFPS = true
 }
 
@@ -45,6 +46,19 @@ for _, item in ipairs(Lighting:GetChildren()) do
     local cn = item.ClassName
     if cn == "BloomEffect" or cn == "SunRaysEffect" or cn == "ColorCorrectionEffect" or cn == "BlurEffect" or cn == "DepthOfFieldEffect" then
         table.insert(EffectsList, item)
+    end
+end
+
+local FlattenList = {}
+
+local function IsCharacterPart(part)
+    local model = part:FindFirstAncestorOfClass("Model")
+    return model ~= nil and model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
+for _, item in ipairs(Workspace:GetDescendants()) do
+    if item:IsA("BasePart") and not IsCharacterPart(item) then
+        table.insert(FlattenList, item)
     end
 end
 for _, item in ipairs(Workspace:GetChildren()) do
@@ -81,6 +95,15 @@ function FPS:SaveOriginals()
     end
     for _, part in ipairs(ParticleList) do
         self.Originals[part] = part.Enabled
+    end
+    for _, part in ipairs(FlattenList) do
+        pcall(function()
+            self.Originals[part] = {
+                Material = part.Material,
+                MaterialVariant = part.MaterialVariant,
+                TextureID = part.TextureID
+            }
+        end)
     end
 end
 
@@ -179,6 +202,30 @@ function FPS:ApplyBlur()
     end
 end
 
+function FPS:ApplyFlatten()
+    for _, part in ipairs(FlattenList) do
+        pcall(function()
+            local orig = self.Originals[part]
+            local sa = part:FindFirstChildOfClass("SurfaceAppearance")
+            if self.Settings.Flatten then
+                part.Material = Enum.Material.SmoothPlastic
+                part.MaterialVariant = ""
+                part.TextureID = ""
+                if sa then
+                    sa.Enabled = false
+                end
+            elseif orig then
+                part.Material = orig.Material
+                part.MaterialVariant = orig.MaterialVariant
+                part.TextureID = orig.TextureID
+                if sa then
+                    sa.Enabled = true
+                end
+            end
+        end)
+    end
+end
+
 function FPS:ApplyParticles()
     for _, part in ipairs(ParticleList) do
         pcall(function()
@@ -194,7 +241,7 @@ function FPS:ApplyFPSLimit()
         pcall(fn, (limit <= 0) and 999 or limit)
     elseif not self.Warned then
         self.Warned = true
-        warn("[W1lteGameYT FPS] setfpscap не поддерживается этим эксплоитом")
+        warn("[W1lteGameYT FPS] setfpscap РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ СЌС‚РёРј СЌРєСЃРїР»РѕРёС‚РѕРј")
     end
 end
 
@@ -205,6 +252,7 @@ function FPS:ApplyAll()
     self:ApplyLighting()
     self:ApplyEffects()
     self:ApplyParticles()
+    self:ApplyFlatten()
     self:ApplyBlur()
     self:ApplyFPSLimit()
 end
@@ -247,39 +295,62 @@ function FPS:RestoreAll()
         end)
         self.BlurInstance = nil
     end
+    for _, part in ipairs(FlattenList) do
+        pcall(function()
+            local orig = self.Originals[part]
+            if orig then
+                part.Material = orig.Material
+                part.MaterialVariant = orig.MaterialVariant
+                part.TextureID = orig.TextureID
+                local sa = part:FindFirstChildOfClass("SurfaceAppearance")
+                if sa then
+                    sa.Enabled = true
+                end
+            end
+        end)
+    end
 end
 
 FPS:SaveOriginals()
 
 Workspace.DescendantAdded:Connect(function(item)
-    if not FPS.Settings.Particles then
-        local cn = item.ClassName
-        if cn == "ParticleEmitter" or cn == "Beam" or cn == "Trail" then
+    local cn = item.ClassName
+    if cn == "ParticleEmitter" or cn == "Beam" or cn == "Trail" then
+        if not FPS.Settings.Particles then
             pcall(function()
                 item.Enabled = false
             end)
         end
+    elseif item:IsA("BasePart") and FPS.Settings.Flatten and not IsCharacterPart(item) then
+        pcall(function()
+            item.Material = Enum.Material.SmoothPlastic
+            item.MaterialVariant = ""
+            item.TextureID = ""
+            local sa = item:FindFirstChildOfClass("SurfaceAppearance")
+            if sa then
+                sa.Enabled = false
+            end
+        end)
     end
 end)
 
-local mainTab = win:Tab("Основное")
+local mainTab = win:Tab("РћСЃРЅРѕРІРЅРѕРµ")
 
-mainTab:Label("> W1lteGameYT FPS Boost v1.1")
-mainTab:Label("F10 - открыть/закрыть меню")
+mainTab:Label("> W1lteGameYT FPS Boost v1.2")
+mainTab:Label("F10 - РѕС‚РєСЂС‹С‚СЊ/Р·Р°РєСЂС‹С‚СЊ РјРµРЅСЋ")
 
 local fpsLabel = mainTab:Label("FPS: --")
 
-mainTab:Dropdown("Пресет", {"Ультра мыло", "Макс FPS", "Низкое", "Среднее", "Высокое", "Оригинал"}, function(value)
-    if value == "Оригинал" then
+mainTab:Dropdown("РџСЂРµСЃРµС‚", {"РњР°РєСЃ FPS (РјС‹Р»Рѕ)", "РќРёР·РєРѕРµ", "РЎСЂРµРґРЅРµРµ", "Р’С‹СЃРѕРєРѕРµ", "РћСЂРёРіРёРЅР°Р»"}, function(value)
+    if value == "РћСЂРёРіРёРЅР°Р»" then
         FPS:RestoreAll()
         return
     end
     local p = {
-        ["Ультра мыло"] = { Quality = 0, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 0, Blurred = true, BlurSize = 20 },
-        ["Макс FPS"] = { Quality = 0, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 0, Blurred = false, BlurSize = 0 },
-        ["Низкое"] = { Quality = 2, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 144, Blurred = false, BlurSize = 0 },
-        ["Среднее"] = { Quality = 5, Shadows = true, Fog = false, Effects = true, Particles = true, Bright = true, FPSLimit = 60, Blurred = false, BlurSize = 0 },
-        ["Высокое"] = { Quality = 10, Shadows = true, Fog = false, Effects = true, Particles = true, Bright = false, FPSLimit = 60, Blurred = false, BlurSize = 0 }
+        ["РњР°РєСЃ FPS (РјС‹Р»Рѕ)"] = { Quality = 0, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 0, Blurred = false, BlurSize = 20, Flatten = true },
+        ["РќРёР·РєРѕРµ"] = { Quality = 2, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 144, Blurred = false, BlurSize = 0, Flatten = false },
+        ["РЎСЂРµРґРЅРµРµ"] = { Quality = 5, Shadows = true, Fog = false, Effects = true, Particles = true, Bright = true, FPSLimit = 60, Blurred = false, BlurSize = 0, Flatten = false },
+        ["Р’С‹СЃРѕРєРѕРµ"] = { Quality = 10, Shadows = true, Fog = false, Effects = true, Particles = true, Bright = false, FPSLimit = 60, Blurred = false, BlurSize = 0, Flatten = false }
     }
     local s = p[value]
     if not s then return end
@@ -292,59 +363,65 @@ mainTab:Dropdown("Пресет", {"Ультра мыло", "Макс FPS", "Ни
     FPS.Settings.FPSLimit = s.FPSLimit
     FPS.Settings.Blurred = s.Blurred
     FPS.Settings.BlurSize = s.BlurSize
+    FPS.Settings.Flatten = s.Flatten
     FPS:ApplyAll()
 end)
 
-mainTab:Slider("Качество графики (0-10)", 0, 10, FPS.Settings.Quality, function(value)
+mainTab:Slider("РљР°С‡РµСЃС‚РІРѕ РіСЂР°С„РёРєРё (0-10)", 0, 10, FPS.Settings.Quality, function(value)
     FPS.Settings.Quality = math.floor(value)
     FPS:ApplyQuality()
 end)
 
-mainTab:Toggle("Тени", FPS.Settings.Shadows, function(val)
+mainTab:Toggle("РўРµРЅРё", FPS.Settings.Shadows, function(val)
     FPS.Settings.Shadows = val
     FPS:ApplyShadows()
 end)
 
-mainTab:Toggle("Убрать туман", FPS.Settings.Fog, function(val)
+mainTab:Toggle("РЈР±СЂР°С‚СЊ С‚СѓРјР°РЅ", FPS.Settings.Fog, function(val)
     FPS.Settings.Fog = val
     FPS:ApplyFog()
 end)
 
-mainTab:Toggle("Убрать эффекты и атмосферу", FPS.Settings.Effects, function(val)
+mainTab:Toggle("РЈР±СЂР°С‚СЊ СЌС„С„РµРєС‚С‹ Рё Р°С‚РјРѕСЃС„РµСЂСѓ", FPS.Settings.Effects, function(val)
     FPS.Settings.Effects = val
     FPS:ApplyEffects()
 end)
 
-mainTab:Toggle("Убрать частицы", FPS.Settings.Particles, function(val)
+mainTab:Toggle("РЈР±СЂР°С‚СЊ С‡Р°СЃС‚РёС†С‹", FPS.Settings.Particles, function(val)
     FPS.Settings.Particles = val
     FPS:ApplyParticles()
 end)
 
-mainTab:Toggle("Мыльный эффект (всё размыто)", FPS.Settings.Blurred, function(val)
+mainTab:Toggle("РњС‹Р»СЊРЅС‹Рµ С‚РµРєСЃС‚СѓСЂС‹ РјРёСЂР° (РїРѕР»С‹/СЃС‚РµРЅС‹)", FPS.Settings.Flatten, function(val)
+    FPS.Settings.Flatten = val
+    FPS:ApplyFlatten()
+end)
+
+mainTab:Toggle("Р Р°Р·РјС‹С‚РёРµ СЌРєСЂР°РЅР°", FPS.Settings.Blurred, function(val)
     FPS.Settings.Blurred = val
     FPS:ApplyBlur()
 end)
 
-mainTab:Slider("Сила мыла (0-40)", 0, 40, FPS.Settings.BlurSize, function(value)
+mainTab:Slider("РЎРёР»Р° СЂР°Р·РјС‹С‚РёСЏ (0-40)", 0, 40, FPS.Settings.BlurSize, function(value)
     FPS.Settings.BlurSize = math.floor(value)
     FPS:ApplyBlur()
 end)
 
-mainTab:Toggle("Яркий свет (игроков видно отлично)", FPS.Settings.Bright, function(val)
+mainTab:Toggle("РЇСЂРєРёР№ СЃРІРµС‚ (РёРіСЂРѕРєРѕРІ РІРёРґРЅРѕ РѕС‚Р»РёС‡РЅРѕ)", FPS.Settings.Bright, function(val)
     FPS.Settings.Bright = val
     FPS:ApplyLighting()
 end)
 
-mainTab:Slider("Лимит FPS (0 = без лимита)", 0, 1000, FPS.Settings.FPSLimit, function(value)
+mainTab:Slider("Р›РёРјРёС‚ FPS (0 = Р±РµР· Р»РёРјРёС‚Р°)", 0, 1000, FPS.Settings.FPSLimit, function(value)
     FPS.Settings.FPSLimit = math.floor(value)
     FPS:ApplyFPSLimit()
 end)
 
-mainTab:Toggle("Показывать FPS", FPS.Settings.ShowFPS, function(val)
+mainTab:Toggle("РџРѕРєР°Р·С‹РІР°С‚СЊ FPS", FPS.Settings.ShowFPS, function(val)
     FPS.Settings.ShowFPS = val
 end)
 
-mainTab:Button("Сбросить всё (вернуть оригинал)", function()
+mainTab:Button("РЎР±СЂРѕСЃРёС‚СЊ РІСЃС‘ (РІРµСЂРЅСѓС‚СЊ РѕСЂРёРіРёРЅР°Р»)", function()
     FPS:RestoreAll()
 end)
 
@@ -371,7 +448,7 @@ end)
 end)
 
 if not success then
-    warn("[W1lteGameYT FPS] Ошибка загрузки: " .. tostring(err))
+    warn("[W1lteGameYT FPS] РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё: " .. tostring(err))
 end
 
-print("[W1lteGameYT FPS] Loaded v1.1! F10 = UI.")
+print("[W1lteGameYT FPS] Loaded v1.2! F10 = UI.")
