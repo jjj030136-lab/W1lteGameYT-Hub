@@ -1,4 +1,4 @@
-print("[W1lteGameYT FPS] Loading... v1.0")
+print("[W1lteGameYT FPS] Loading... v1.1")
 
 local success, err = pcall(function()
 
@@ -7,6 +7,7 @@ local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
 local lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/UI-Libs/main/Vape.txt"))()
 local win = lib:Window("W1lteGameYT FPS Boost", Color3.fromRGB(44, 120, 224), Enum.KeyCode.F10)
@@ -21,11 +22,14 @@ FPS.Settings = {
     Particles = false,
     Bright = true,
     FPSLimit = 0,
+    Blurred = true,
+    BlurSize = 20,
     ShowFPS = true
 }
 
 FPS.Originals = {}
 FPS.Warned = false
+FPS.BlurInstance = nil
 
 local Atmosphere = Workspace:FindFirstChildOfClass("Atmosphere")
 local EffectsList = {}
@@ -69,6 +73,9 @@ function FPS:SaveOriginals()
     pcall(function()
         self.Originals.AtmosphereEnabled = Atmosphere and Atmosphere.Enabled
     end)
+    pcall(function()
+        self.Originals.MaximumLOD = gethiddenproperty(Camera, "MaximumLOD")
+    end)
     for _, eff in ipairs(EffectsList) do
         self.Originals[eff] = eff.Enabled
     end
@@ -87,6 +94,9 @@ function FPS:ApplyQuality()
     end)
     pcall(function()
         Lighting.Technology = (q <= 1) and Enum.Technology.Compatibility or self.Originals.Technology
+    end)
+    pcall(function()
+        sethiddenproperty(Camera, "MaximumLOD", (q <= 1) and 0 or (self.Originals.MaximumLOD or 1000))
     end)
 end
 
@@ -149,6 +159,26 @@ function FPS:ApplyEffects()
     end)
 end
 
+function FPS:ApplyBlur()
+    if self.Settings.Blurred then
+        if not self.BlurInstance then
+            pcall(function()
+                self.BlurInstance = Instance.new("BlurEffect", Lighting)
+            end)
+        end
+        if self.BlurInstance then
+            pcall(function()
+                self.BlurInstance.Size = self.Settings.BlurSize
+            end)
+        end
+    elseif self.BlurInstance then
+        pcall(function()
+            self.BlurInstance:Destroy()
+        end)
+        self.BlurInstance = nil
+    end
+end
+
 function FPS:ApplyParticles()
     for _, part in ipairs(ParticleList) do
         pcall(function()
@@ -175,6 +205,7 @@ function FPS:ApplyAll()
     self:ApplyLighting()
     self:ApplyEffects()
     self:ApplyParticles()
+    self:ApplyBlur()
     self:ApplyFPSLimit()
 end
 
@@ -207,6 +238,15 @@ function FPS:RestoreAll()
             part.Enabled = self.Originals[part]
         end)
     end
+    pcall(function()
+        sethiddenproperty(Camera, "MaximumLOD", self.Originals.MaximumLOD or 1000)
+    end)
+    if self.BlurInstance then
+        pcall(function()
+            self.BlurInstance:Destroy()
+        end)
+        self.BlurInstance = nil
+    end
 end
 
 FPS:SaveOriginals()
@@ -224,21 +264,22 @@ end)
 
 local mainTab = win:Tab("Основное")
 
-mainTab:Label("> W1lteGameYT FPS Boost v1.0")
+mainTab:Label("> W1lteGameYT FPS Boost v1.1")
 mainTab:Label("F10 - открыть/закрыть меню")
 
 local fpsLabel = mainTab:Label("FPS: --")
 
-mainTab:Dropdown("Пресет", {"Макс FPS", "Низкое", "Среднее", "Высокое", "Оригинал"}, function(value)
+mainTab:Dropdown("Пресет", {"Ультра мыло", "Макс FPS", "Низкое", "Среднее", "Высокое", "Оригинал"}, function(value)
     if value == "Оригинал" then
         FPS:RestoreAll()
         return
     end
     local p = {
-        ["Макс FPS"] = { Quality = 0, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 0 },
-        ["Низкое"] = { Quality = 2, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 144 },
-        ["Среднее"] = { Quality = 5, Shadows = true, Fog = false, Effects = true, Particles = true, Bright = true, FPSLimit = 60 },
-        ["Высокое"] = { Quality = 10, Shadows = true, Fog = false, Effects = true, Particles = true, Bright = false, FPSLimit = 60 }
+        ["Ультра мыло"] = { Quality = 0, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 0, Blurred = true, BlurSize = 20 },
+        ["Макс FPS"] = { Quality = 0, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 0, Blurred = false, BlurSize = 0 },
+        ["Низкое"] = { Quality = 2, Shadows = false, Fog = true, Effects = false, Particles = false, Bright = true, FPSLimit = 144, Blurred = false, BlurSize = 0 },
+        ["Среднее"] = { Quality = 5, Shadows = true, Fog = false, Effects = true, Particles = true, Bright = true, FPSLimit = 60, Blurred = false, BlurSize = 0 },
+        ["Высокое"] = { Quality = 10, Shadows = true, Fog = false, Effects = true, Particles = true, Bright = false, FPSLimit = 60, Blurred = false, BlurSize = 0 }
     }
     local s = p[value]
     if not s then return end
@@ -249,6 +290,8 @@ mainTab:Dropdown("Пресет", {"Макс FPS", "Низкое", "Средне�
     FPS.Settings.Particles = s.Particles
     FPS.Settings.Bright = s.Bright
     FPS.Settings.FPSLimit = s.FPSLimit
+    FPS.Settings.Blurred = s.Blurred
+    FPS.Settings.BlurSize = s.BlurSize
     FPS:ApplyAll()
 end)
 
@@ -275,6 +318,16 @@ end)
 mainTab:Toggle("Убрать частицы", FPS.Settings.Particles, function(val)
     FPS.Settings.Particles = val
     FPS:ApplyParticles()
+end)
+
+mainTab:Toggle("Мыльный эффект (всё размыто)", FPS.Settings.Blurred, function(val)
+    FPS.Settings.Blurred = val
+    FPS:ApplyBlur()
+end)
+
+mainTab:Slider("Сила мыла (0-40)", 0, 40, FPS.Settings.BlurSize, function(value)
+    FPS.Settings.BlurSize = math.floor(value)
+    FPS:ApplyBlur()
 end)
 
 mainTab:Toggle("Яркий свет (игроков видно отлично)", FPS.Settings.Bright, function(val)
@@ -321,4 +374,4 @@ if not success then
     warn("[W1lteGameYT FPS] Ошибка загрузки: " .. tostring(err))
 end
 
-print("[W1lteGameYT FPS] Loaded v1.0! F10 = UI.")
+print("[W1lteGameYT FPS] Loaded v1.1! F10 = UI.")
