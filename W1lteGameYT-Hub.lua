@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v19.3")
+print("[W1lteGameYT Hub] Loading... v19.4")
 
 local success, err = pcall(function()
 
@@ -425,6 +425,268 @@ function Triggerbot:Step()
 end
 
 -- ============================================================
+--  ESP
+-- ============================================================
+local Esp = {}
+
+Esp.Settings = {
+    Enabled     = false,
+    Box         = true,
+    BoxFill     = true,
+    Name        = true,
+    Distance    = true,
+    Health      = true,
+    HealthText  = true,
+    Tracer      = false,
+    TeamCheck   = true,
+    MaxDistance = 1500,
+    TextSize    = 14,
+    Thickness   = 1,
+    VisibleTint = true,   -- occluded targets draw dimmed
+}
+
+Esp.State = { cache = {} }
+
+Esp.EnemyColor   = Color3.fromRGB(255, 60, 60)
+Esp.TeamColor    = Color3.fromRGB(80, 220, 120)
+Esp.VisibleColor = Color3.fromRGB(255, 255, 255)
+
+local function newDrawing(kind)
+    if not Drawing then return nil end
+    local ok, obj = pcall(function() return Drawing.new(kind) end)
+    if ok then return obj end
+    return nil
+end
+
+function Esp:GetCamera()
+    if workspace.CurrentCamera then
+        Camera = workspace.CurrentCamera
+    end
+    return Camera
+end
+
+function Esp:IsEnemy(player)
+    if not player or player == LocalPlayer then return false end
+    if not self.Settings.TeamCheck then return true end
+    if Aimbot.TeamCount and Aimbot.TeamCount >= 2 then
+        return player.Team ~= LocalPlayer.Team
+    end
+    if Aimbot.ColorCount and Aimbot.ColorCount >= 2 then
+        local myColor = LocalPlayer.TeamColor
+        if myColor and myColor ~= BrickColor.new("Medium stone grey") then
+            return player.TeamColor ~= myColor
+        end
+    end
+    return true
+end
+
+function Esp:ColorFor(player, visible)
+    local base
+    if self.Settings.TeamCheck and not self:IsEnemy(player) then
+        base = self.TeamColor
+    else
+        base = self.EnemyColor
+    end
+    if self.Settings.VisibleTint and not visible then
+        return Color3.new(base.R * 0.45, base.G * 0.45, base.B * 0.45)
+    end
+    return base
+end
+
+function Esp:Acquire(player)
+    local entry = self.State.cache[player]
+    if entry then return entry end
+    entry = {
+        box    = newDrawing("Square"),
+        fill   = newDrawing("Square"),
+        name   = newDrawing("Text"),
+        dist   = newDrawing("Text"),
+        hpBack = newDrawing("Square"),
+        hpBar  = newDrawing("Square"),
+        tracer = newDrawing("Line"),
+    }
+    if entry.box then
+        entry.box.Thickness = self.Settings.Thickness
+        entry.box.Filled = false
+    end
+    if entry.fill then
+        entry.fill.Filled = true
+        entry.fill.Transparency = 0.75
+    end
+    if entry.name then
+        entry.name.Center = true
+        entry.name.Outline = true
+        entry.name.Size = self.Settings.TextSize
+    end
+    if entry.dist then
+        entry.dist.Center = true
+        entry.dist.Outline = true
+        entry.dist.Size = self.Settings.TextSize
+    end
+    if entry.hpBack then
+        entry.hpBack.Filled = true
+        entry.hpBack.Color = Color3.fromRGB(20, 20, 20)
+        entry.hpBack.Transparency = 0.35
+    end
+    if entry.hpBar then
+        entry.hpBar.Filled = true
+    end
+    if entry.tracer then
+        entry.tracer.Thickness = 1
+    end
+    self.State.cache[player] = entry
+    return entry
+end
+
+function Esp:Release(player)
+    local entry = self.State.cache[player]
+    if not entry then return end
+    for _, obj in pairs(entry) do
+        if obj and obj.Remove then pcall(function() obj:Remove() end) end
+    end
+    self.State.cache[player] = nil
+end
+
+function Esp:ClearAll()
+    for player in pairs(self.State.cache) do
+        self:Release(player)
+    end
+end
+
+function Esp:Visible(part, character)
+    local cam = self:GetCamera()
+    if not cam then return false end
+    local camPos = cam.CFrame.Position
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local localChar = LocalPlayer.Character
+    params.FilterDescendantsInstances = localChar and { localChar } or {}
+    local result = workspace:Raycast(camPos, part.Position - camPos, params)
+    if not result then return true end
+    return result.Instance:IsDescendantOf(character)
+end
+
+local function hide(entry)
+    for _, obj in pairs(entry) do
+        if obj and obj.Visible ~= nil then obj.Visible = false end
+    end
+end
+
+function Esp:Update()
+    if not self.Settings.Enabled then
+        if next(self.State.cache) then self:ClearAll() end
+        return
+    end
+    local cam = self:GetCamera()
+    if not cam then return end
+    local vp = cam.ViewportSize
+    local camPos = cam.CFrame.Position
+    local offY = GuiService:GetGuiInset().Y   -- Drawing uses screen space, viewport point does not
+    local seen = {}
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local entry = self:Acquire(player)
+            local character = player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            local head = character and character:FindFirstChild("Head")
+            local root = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso"))
+
+            local draw = humanoid and head and root and humanoid.Health > 0
+                and (not self.Settings.TeamCheck or self:IsEnemy(player))
+                and (head.Position - camPos).Magnitude <= self.Settings.MaxDistance
+
+            if draw then
+                local headPos, headOn = cam:WorldToViewportPoint(head.Position)
+                local rootPos, rootOn = cam:WorldToViewportPoint(root.Position + Vector3.new(0, -1.2, 0))
+                if headOn and rootOn then
+                    local height = math.abs(rootPos.Y - headPos.Y)
+                    if height < 6 then height = 6 end
+                    local width = height * 0.52
+                    local x = headPos.X - width * 0.5
+                    local y = headPos.Y + offY
+                    local color = self:ColorFor(player, self:Visible(head, character))
+                    seen[player] = true
+
+                    if entry.box then
+                        entry.box.Visible = self.Settings.Box
+                        entry.box.Position = Vector2.new(x, y)
+                        entry.box.Size = Vector2.new(width, height)
+                        entry.box.Color = color
+                        entry.box.Thickness = self.Settings.Thickness
+                    end
+
+                    if entry.fill then
+                        entry.fill.Visible = self.Settings.BoxFill and self.Settings.Box
+                        entry.fill.Position = Vector2.new(x, y)
+                        entry.fill.Size = Vector2.new(width, height)
+                        entry.fill.Color = color
+                    end
+
+                    local labelY = y + height + 2
+                    if entry.name then
+                        entry.name.Visible = self.Settings.Name
+                        entry.name.Text = player.Name
+                        entry.name.Position = Vector2.new(headPos.X, labelY)
+                        entry.name.Color = color
+                        entry.name.Size = self.Settings.TextSize
+                    end
+
+                    if entry.dist then
+                        entry.dist.Visible = self.Settings.Distance
+                        entry.dist.Text = string.format("%dm", math.floor((head.Position - camPos).Magnitude))
+                        entry.dist.Position = Vector2.new(headPos.X, labelY + self.Settings.TextSize + 1)
+                        entry.dist.Color = color
+                        entry.dist.Size = self.Settings.TextSize
+                    end
+
+                    local hp = math.clamp(humanoid.Health / math.max(humanoid.MaxHealth, 1), 0, 1)
+                    if entry.hpBack then
+                        entry.hpBack.Visible = self.Settings.Health
+                        entry.hpBack.Position = Vector2.new(x - 5, y)
+                        entry.hpBack.Size = Vector2.new(3, height)
+                    end
+                    if entry.hpBar then
+                        entry.hpBar.Visible = self.Settings.Health
+                        entry.hpBar.Position = Vector2.new(x - 5, y + height * (1 - hp))
+                        entry.hpBar.Size = Vector2.new(3, height * hp)
+                        entry.hpBar.Color = Color3.fromRGB(255 * (1 - hp), 255 * hp, 60)
+                    end
+
+                    if entry.tracer then
+                        entry.tracer.Visible = self.Settings.Tracer
+                        entry.tracer.From = Vector2.new(vp.X * 0.5, vp.Y + offY)
+                        entry.tracer.To = Vector2.new(headPos.X, y + height)
+                        entry.tracer.Color = color
+                    end
+
+                    if not self.Settings.HealthText and entry.name then
+                        entry.name.Text = player.Name
+                    end
+                    if self.Settings.HealthText and entry.name then
+                        entry.name.Text = string.format("%s [%d]", player.Name, math.floor(humanoid.Health))
+                    end
+                else
+                    hide(entry)
+                end
+            else
+                hide(entry)
+            end
+        end
+    end
+
+    for player in pairs(self.State.cache) do
+        if not seen[player] then
+            local entry = self.State.cache[player]
+            if entry then hide(entry) end
+            if not player.Parent or not player.Character then
+                self:Release(player)
+            end
+        end
+    end
+end
+
+-- ============================================================
 --  UI
 -- ============================================================
 local mainTab = win:Tab("Main")
@@ -586,6 +848,46 @@ trigTab:Label("Tap = one shot per target, stops the flood.")
 trigTab:Label("Burst = N shots per target. Auto = hold fire.")
 trigTab:Label("Mouse = mouse1click, Tool = tool:Activate().")
 
+-- ============================================================
+--  ESP TAB
+-- ============================================================
+local espTab = win:Tab("ESP")
+espTab:Label("> ESP v1.0")
+
+local espStatus = espTab:Label("status: off")
+
+espTab:Toggle("Enable ESP", Esp.Settings.Enabled, function(val)
+    Esp.Settings.Enabled = val
+    if not val then Esp:ClearAll() end
+end)
+
+espTab:Toggle("Box", Esp.Settings.Box, function(val) Esp.Settings.Box = val end)
+espTab:Toggle("Box Fill", Esp.Settings.BoxFill, function(val) Esp.Settings.BoxFill = val end)
+espTab:Toggle("Name", Esp.Settings.Name, function(val) Esp.Settings.Name = val end)
+espTab:Toggle("Distance", Esp.Settings.Distance, function(val) Esp.Settings.Distance = val end)
+espTab:Toggle("Health Bar", Esp.Settings.Health, function(val) Esp.Settings.Health = val end)
+espTab:Toggle("Health Text", Esp.Settings.HealthText, function(val) Esp.Settings.HealthText = val end)
+espTab:Toggle("Tracer", Esp.Settings.Tracer, function(val) Esp.Settings.Tracer = val end)
+espTab:Toggle("Team Check (hide teammates)", Esp.Settings.TeamCheck, function(val) Esp.Settings.TeamCheck = val end)
+espTab:Toggle("Dim Behind Walls", Esp.Settings.VisibleTint, function(val) Esp.Settings.VisibleTint = val end)
+
+espTab:Slider("Max Distance (studs)", 50, 5000, Esp.Settings.MaxDistance, function(val)
+    Esp.Settings.MaxDistance = val
+end)
+
+espTab:Slider("Text Size", 8, 24, Esp.Settings.TextSize, function(val)
+    Esp.Settings.TextSize = val
+end)
+
+espTab:Slider("Box Thickness", 1, 4, Esp.Settings.Thickness, function(val)
+    Esp.Settings.Thickness = val
+end)
+
+espTab:Button("Clear All Drawings", function()
+    Esp:ClearAll()
+end)
+
+espTab:Label("Drawing API: " .. tostring(HasDrawing and "available" or "missing - boxes only"))
 
 -- ============================================================
 --  input & loop
@@ -681,6 +983,17 @@ RunService.RenderStepped:Connect(function()
         end
 
         Triggerbot:Step()
+        Esp:Update()
+
+        if espStatus and espStatus.ButtonTitle then
+            local count = 0
+            for _ in pairs(Esp.State.cache) do count = count + 1 end
+            if Esp.Settings.Enabled then
+                espStatus.ButtonTitle.Text = string.format("status: on | tracked: %d", count)
+            else
+                espStatus.ButtonTitle.Text = "status: off"
+            end
+        end
 
         if trigStatus and trigStatus.ButtonTitle then
             local now = tick()
@@ -710,7 +1023,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("[W1lteGameYT Hub] Loaded v19.3! Right Shift = UI. RMB = aim. Triggerbot tab = auto-fire.")
+print("[W1lteGameYT Hub] Loaded v19.4! Right Shift = UI. RMB = aim. Triggerbot tab = auto-fire. ESP tab = boxes.")
 
 end)
 
