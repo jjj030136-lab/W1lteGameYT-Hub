@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v19.4")
+print("[W1lteGameYT Hub] Loading... v19.5")
 
 local success, err = pcall(function()
 
@@ -425,7 +425,7 @@ function Triggerbot:Step()
 end
 
 -- ============================================================
---  ESP
+--  ESP  (GUI backend - works without the Drawing API)
 -- ============================================================
 local Esp = {}
 
@@ -438,24 +438,59 @@ Esp.Settings = {
     Health      = true,
     HealthText  = true,
     Tracer      = false,
-    TeamCheck   = true,
+    TeamCheck   = false,     -- off by default: draw everyone, no team guessing
     MaxDistance = 1500,
     TextSize    = 14,
     Thickness   = 1,
-    VisibleTint = true,   -- occluded targets draw dimmed
+    VisibleTint = true,
 }
 
-Esp.State = { cache = {} }
+Esp.State = { entries = {} }
 
 Esp.EnemyColor   = Color3.fromRGB(255, 60, 60)
 Esp.TeamColor    = Color3.fromRGB(80, 220, 120)
-Esp.VisibleColor = Color3.fromRGB(255, 255, 255)
+Esp.OccludedMul  = 0.45
 
-local function newDrawing(kind)
-    if not Drawing then return nil end
-    local ok, obj = pcall(function() return Drawing.new(kind) end)
-    if ok then return obj end
-    return nil
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local function ensureGui()
+    local gui = Esp.Gui
+    if gui and gui.Parent then
+        return gui
+    end
+    gui = Instance.new("ScreenGui")
+    gui.Name = "W1lteESP"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.DisplayOrder = 999
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.Parent = PlayerGui
+    Esp.Gui = gui
+    return gui
+end
+
+local function newFrame(parent, name)
+    local f = Instance.new("Frame")
+    f.Name = name
+    f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0
+    f.Parent = parent
+    return f
+end
+
+local function newLabel(parent, name, size, bold)
+    local t = Instance.new("TextLabel")
+    t.Name = name
+    t.BackgroundTransparency = 1
+    t.BorderSizePixel = 0
+    t.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+    t.TextSize = size
+    t.TextColor3 = Color3.new(1, 1, 1)
+    t.TextStrokeTransparency = 0.35
+    t.TextXAlignment = Enum.TextXAlignment.Center
+    t.TextYAlignment = Enum.TextYAlignment.Top
+    t.Parent = parent
+    return t
 end
 
 function Esp:GetCamera()
@@ -488,68 +523,72 @@ function Esp:ColorFor(player, visible)
         base = self.EnemyColor
     end
     if self.Settings.VisibleTint and not visible then
-        return Color3.new(base.R * 0.45, base.G * 0.45, base.B * 0.45)
+        return Color3.new(base.R * self.OccludedMul, base.G * self.OccludedMul, base.B * self.OccludedMul)
     end
     return base
 end
 
 function Esp:Acquire(player)
-    local entry = self.State.cache[player]
+    local entry = self.State.entries[player]
     if entry then return entry end
+
+    local gui = ensureGui()
+    local root = newFrame(gui, "p_" .. tostring(player.UserId))
+
+    local box = newFrame(root, "box")
+    local stroke = Instance.new("UIStroke")
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Thickness = self.Settings.Thickness
+    stroke.Color = self.EnemyColor
+    stroke.Parent = box
+
+    local fill = newFrame(root, "fill")
+    fill.BackgroundColor3 = self.EnemyColor
+    fill.BackgroundTransparency = 0.82
+
+    local hpBack = newFrame(root, "hpBack")
+    hpBack.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    hpBack.BackgroundTransparency = 0.45
+
+    local hpBar = newFrame(root, "hpBar")
+    hpBar.BackgroundColor3 = Color3.fromRGB(90, 255, 90)
+
+    local tracer = newFrame(root, "tracer")
+    tracer.BackgroundColor3 = self.EnemyColor
+    tracer.AnchorPoint = Vector2.new(0, 0.5)
+
+    local name = newLabel(root, "name", self.Settings.TextSize, true)
+    local dist = newLabel(root, "dist", math.max(self.Settings.TextSize - 2, 8), false)
+
     entry = {
-        box    = newDrawing("Square"),
-        fill   = newDrawing("Square"),
-        name   = newDrawing("Text"),
-        dist   = newDrawing("Text"),
-        hpBack = newDrawing("Square"),
-        hpBar  = newDrawing("Square"),
-        tracer = newDrawing("Line"),
+        root = root,
+        box = box,
+        stroke = stroke,
+        fill = fill,
+        hpBack = hpBack,
+        hpBar = hpBar,
+        tracer = tracer,
+        name = name,
+        dist = dist,
     }
-    if entry.box then
-        entry.box.Thickness = self.Settings.Thickness
-        entry.box.Filled = false
-    end
-    if entry.fill then
-        entry.fill.Filled = true
-        entry.fill.Transparency = 0.75
-    end
-    if entry.name then
-        entry.name.Center = true
-        entry.name.Outline = true
-        entry.name.Size = self.Settings.TextSize
-    end
-    if entry.dist then
-        entry.dist.Center = true
-        entry.dist.Outline = true
-        entry.dist.Size = self.Settings.TextSize
-    end
-    if entry.hpBack then
-        entry.hpBack.Filled = true
-        entry.hpBack.Color = Color3.fromRGB(20, 20, 20)
-        entry.hpBack.Transparency = 0.35
-    end
-    if entry.hpBar then
-        entry.hpBar.Filled = true
-    end
-    if entry.tracer then
-        entry.tracer.Thickness = 1
-    end
-    self.State.cache[player] = entry
+    self.State.entries[player] = entry
     return entry
 end
 
 function Esp:Release(player)
-    local entry = self.State.cache[player]
+    local entry = self.State.entries[player]
     if not entry then return end
-    for _, obj in pairs(entry) do
-        if obj and obj.Remove then pcall(function() obj:Remove() end) end
-    end
-    self.State.cache[player] = nil
+    if entry.root then pcall(function() entry.root:Destroy() end) end
+    self.State.entries[player] = nil
 end
 
 function Esp:ClearAll()
-    for player in pairs(self.State.cache) do
+    for player in pairs(self.State.entries) do
         self:Release(player)
+    end
+    if self.Gui then
+        pcall(function() self.Gui:Destroy() end)
+        self.Gui = nil
     end
 end
 
@@ -566,125 +605,139 @@ function Esp:Visible(part, character)
     return result.Instance:IsDescendantOf(character)
 end
 
-local function hide(entry)
-    for _, obj in pairs(entry) do
-        if obj and obj.Visible ~= nil then obj.Visible = false end
+function Esp:UpdateEntry(entry, player, character, humanoid, head, rootPart, cam, vp, camPos)
+    local headPos, headOn = cam:WorldToViewportPoint(head.Position)
+    local rootPos, rootOn = cam:WorldToViewportPoint(rootPart.Position + Vector3.new(0, -1.2, 0))
+    if not (headOn and rootOn) then
+        entry.root.Visible = false
+        return false
     end
+
+    local height = math.abs(rootPos.Y - headPos.Y)
+    if height < 8 then height = 8 end
+    local width = math.max(height * 0.52, 20)
+    local x = headPos.X - width * 0.5
+    local y = headPos.Y
+    local visible = self:Visible(head, character)
+    local color = self:ColorFor(player, visible)
+
+    entry.root.Visible = true
+
+    entry.box.Visible = self.Settings.Box
+    entry.box.Position = UDim2.fromOffset(x, y)
+    entry.box.Size = UDim2.fromOffset(width, height)
+    entry.stroke.Color = color
+    entry.stroke.Thickness = self.Settings.Thickness
+
+    entry.fill.Visible = self.Settings.BoxFill and self.Settings.Box
+    entry.fill.Position = UDim2.fromOffset(x, y)
+    entry.fill.Size = UDim2.fromOffset(width, height)
+    entry.fill.BackgroundColor3 = color
+
+    local hp = math.clamp(humanoid.Health / math.max(humanoid.MaxHealth, 1), 0, 1)
+
+    entry.hpBack.Visible = self.Settings.Health
+    entry.hpBack.Position = UDim2.fromOffset(x - 6, y)
+    entry.hpBack.Size = UDim2.fromOffset(3, height)
+
+    entry.hpBar.Visible = self.Settings.Health
+    entry.hpBar.Position = UDim2.fromOffset(x - 6, y + height * (1 - hp))
+    entry.hpBar.Size = UDim2.fromOffset(3, math.max(height * hp, 1))
+    entry.hpBar.BackgroundColor3 = Color3.new(1 - hp, hp, 0.25)
+
+    local labelY = y + height + 2
+    local text = player.Name
+    if self.Settings.HealthText then
+        text = string.format("%s [%d]", player.Name, math.floor(humanoid.Health))
+    end
+
+    entry.name.Visible = self.Settings.Name
+    entry.name.Text = text
+    entry.name.Position = UDim2.fromOffset(x + width * 0.5 - width, labelY)
+    entry.name.Size = UDim2.fromOffset(width * 2, self.Settings.TextSize + 2)
+    entry.name.TextSize = self.Settings.TextSize
+    entry.name.TextColor3 = color
+
+    entry.dist.Visible = self.Settings.Distance
+    entry.dist.Text = string.format("%dm", math.floor((head.Position - camPos).Magnitude))
+    entry.dist.Position = UDim2.fromOffset(x + width * 0.5 - width, labelY + self.Settings.TextSize + 1)
+    entry.dist.Size = UDim2.fromOffset(width * 2, self.Settings.TextSize)
+    entry.dist.TextSize = math.max(self.Settings.TextSize - 2, 8)
+    entry.dist.TextColor3 = color
+
+    if self.Settings.Tracer then
+        local fromX, fromY = vp.X * 0.5, vp.Y
+        local toX, toY = headPos.X, y + height
+        local dx, dy = toX - fromX, toY - fromY
+        local length = math.sqrt(dx * dx + dy * dy)
+        entry.tracer.Visible = length > 1
+        entry.tracer.Position = UDim2.fromOffset(fromX, fromY)
+        entry.tracer.Size = UDim2.fromOffset(length, 1)
+        entry.tracer.Rotation = math.deg(math.atan2(dy, dx))
+        entry.tracer.BackgroundColor3 = color
+    else
+        entry.tracer.Visible = false
+    end
+
+    return true
 end
 
 function Esp:Update()
     if not self.Settings.Enabled then
-        if next(self.State.cache) then self:ClearAll() end
+        if self.Gui and self.Gui.Enabled then
+            self.Gui.Enabled = false
+        end
         return
     end
+
     local cam = self:GetCamera()
     if not cam then return end
     local vp = cam.ViewportSize
     local camPos = cam.CFrame.Position
-    local offY = GuiService:GetGuiInset().Y   -- Drawing uses screen space, viewport point does not
+
+    local gui = ensureGui()
+    gui.Enabled = true
+
     local seen = {}
+    local drawn = 0
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            local entry = self:Acquire(player)
             local character = player.Character
             local humanoid = character and character:FindFirstChildOfClass("Humanoid")
             local head = character and character:FindFirstChild("Head")
-            local root = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso"))
+            local rootPart = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso"))
 
-            local draw = humanoid and head and root and humanoid.Health > 0
-                and (not self.Settings.TeamCheck or self:IsEnemy(player))
+            local ok = humanoid and head and rootPart and humanoid.Health > 0
+                and self:IsEnemy(player)
                 and (head.Position - camPos).Magnitude <= self.Settings.MaxDistance
 
-            if draw then
-                local headPos, headOn = cam:WorldToViewportPoint(head.Position)
-                local rootPos, rootOn = cam:WorldToViewportPoint(root.Position + Vector3.new(0, -1.2, 0))
-                if headOn and rootOn then
-                    local height = math.abs(rootPos.Y - headPos.Y)
-                    if height < 6 then height = 6 end
-                    local width = height * 0.52
-                    local x = headPos.X - width * 0.5
-                    local y = headPos.Y + offY
-                    local color = self:ColorFor(player, self:Visible(head, character))
+            local entry = self.State.entries[player]
+            if ok then
+                entry = entry or self:Acquire(player)
+                if self:UpdateEntry(entry, player, character, humanoid, head, rootPart, cam, vp, camPos) then
                     seen[player] = true
-
-                    if entry.box then
-                        entry.box.Visible = self.Settings.Box
-                        entry.box.Position = Vector2.new(x, y)
-                        entry.box.Size = Vector2.new(width, height)
-                        entry.box.Color = color
-                        entry.box.Thickness = self.Settings.Thickness
-                    end
-
-                    if entry.fill then
-                        entry.fill.Visible = self.Settings.BoxFill and self.Settings.Box
-                        entry.fill.Position = Vector2.new(x, y)
-                        entry.fill.Size = Vector2.new(width, height)
-                        entry.fill.Color = color
-                    end
-
-                    local labelY = y + height + 2
-                    if entry.name then
-                        entry.name.Visible = self.Settings.Name
-                        entry.name.Text = player.Name
-                        entry.name.Position = Vector2.new(headPos.X, labelY)
-                        entry.name.Color = color
-                        entry.name.Size = self.Settings.TextSize
-                    end
-
-                    if entry.dist then
-                        entry.dist.Visible = self.Settings.Distance
-                        entry.dist.Text = string.format("%dm", math.floor((head.Position - camPos).Magnitude))
-                        entry.dist.Position = Vector2.new(headPos.X, labelY + self.Settings.TextSize + 1)
-                        entry.dist.Color = color
-                        entry.dist.Size = self.Settings.TextSize
-                    end
-
-                    local hp = math.clamp(humanoid.Health / math.max(humanoid.MaxHealth, 1), 0, 1)
-                    if entry.hpBack then
-                        entry.hpBack.Visible = self.Settings.Health
-                        entry.hpBack.Position = Vector2.new(x - 5, y)
-                        entry.hpBack.Size = Vector2.new(3, height)
-                    end
-                    if entry.hpBar then
-                        entry.hpBar.Visible = self.Settings.Health
-                        entry.hpBar.Position = Vector2.new(x - 5, y + height * (1 - hp))
-                        entry.hpBar.Size = Vector2.new(3, height * hp)
-                        entry.hpBar.Color = Color3.fromRGB(255 * (1 - hp), 255 * hp, 60)
-                    end
-
-                    if entry.tracer then
-                        entry.tracer.Visible = self.Settings.Tracer
-                        entry.tracer.From = Vector2.new(vp.X * 0.5, vp.Y + offY)
-                        entry.tracer.To = Vector2.new(headPos.X, y + height)
-                        entry.tracer.Color = color
-                    end
-
-                    if not self.Settings.HealthText and entry.name then
-                        entry.name.Text = player.Name
-                    end
-                    if self.Settings.HealthText and entry.name then
-                        entry.name.Text = string.format("%s [%d]", player.Name, math.floor(humanoid.Health))
-                    end
-                else
-                    hide(entry)
+                    drawn = drawn + 1
                 end
-            else
-                hide(entry)
+            elseif entry then
+                entry.root.Visible = false
             end
         end
     end
 
-    for player in pairs(self.State.cache) do
+    for player, entry in pairs(self.State.entries) do
         if not seen[player] then
-            local entry = self.State.cache[player]
-            if entry then hide(entry) end
+            entry.root.Visible = false
             if not player.Parent or not player.Character then
                 self:Release(player)
             end
         end
     end
+
+    self.State.Drawn = drawn
 end
+
+
 
 -- ============================================================
 --  UI
@@ -887,7 +940,32 @@ espTab:Button("Clear All Drawings", function()
     Esp:ClearAll()
 end)
 
-espTab:Label("Drawing API: " .. tostring(HasDrawing and "available" or "missing - boxes only"))
+espTab:Button("Diagnose (print why nothing draws)", function()
+    local cam = Esp:GetCamera()
+    local camPos = cam and cam.CFrame.Position or Vector3.new()
+    print("[ESP] ---- DIAG ----")
+    print("  enabled      : " .. tostring(Esp.Settings.Enabled))
+    print("  gui          : " .. tostring(Esp.Gui ~= nil))
+    print("  gui parent   : " .. tostring(Esp.Gui and Esp.Gui.Parent and Esp.Gui.Parent:GetFullName() or "none"))
+    print("  camera       : " .. tostring(cam ~= nil))
+    print("  teamCount    : " .. tostring(Aimbot.TeamCount) .. " | colorCount: " .. tostring(Aimbot.ColorCount))
+    print("  myTeam       : " .. tostring(LocalPlayer.Team and LocalPlayer.Team.Name or "none"))
+    print("  players      : " .. tostring(#Players:GetPlayers()))
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local ch = p.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            local head = ch and ch:FindFirstChild("Head")
+            local dist = head and (head.Position - camPos).Magnitude or -1
+            print(string.format("  %s | char=%s | hp=%s | head=%s | dist=%.0f | enemy=%s",
+                p.Name, tostring(ch ~= nil), tostring(hum and hum.Health or 0),
+                tostring(head ~= nil), dist, tostring(Esp:IsEnemy(p))))
+        end
+    end
+    print("[ESP] ---- END ----")
+end)
+
+espTab:Label("Backend: Roblox GUI (works without Drawing API).")
 
 -- ============================================================
 --  input & loop
@@ -987,9 +1065,10 @@ RunService.RenderStepped:Connect(function()
 
         if espStatus and espStatus.ButtonTitle then
             local count = 0
-            for _ in pairs(Esp.State.cache) do count = count + 1 end
+            for _ in pairs(Esp.State.entries) do count = count + 1 end
             if Esp.Settings.Enabled then
-                espStatus.ButtonTitle.Text = string.format("status: on | tracked: %d", count)
+                espStatus.ButtonTitle.Text = string.format("status: on | drawn: %d | cached: %d",
+                    Esp.State.Drawn or 0, count)
             else
                 espStatus.ButtonTitle.Text = "status: off"
             end
@@ -1023,7 +1102,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("[W1lteGameYT Hub] Loaded v19.4! Right Shift = UI. RMB = aim. Triggerbot tab = auto-fire. ESP tab = boxes.")
+print("[W1lteGameYT Hub] Loaded v19.5! Right Shift = UI. RMB = aim. Triggerbot tab = auto-fire. ESP tab = boxes.")
 
 end)
 
