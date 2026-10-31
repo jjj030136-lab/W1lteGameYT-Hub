@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v19.2")
+print("[W1lteGameYT Hub] Loading... v19.3")
 
 local success, err = pcall(function()
 
@@ -6,6 +6,7 @@ local HasDrawing = pcall(function() local d = Drawing.new("Circle") d:Remove() e
 
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
@@ -186,23 +187,26 @@ Triggerbot.Settings = {
     SkipFriends = true,
     Mode        = "Hold",       -- "Hold" (while key down) or "Always"
     Key         = Enum.KeyCode.F,
-    FOV         = 7,            -- pixels from crosshair
-    FireDelay   = 0.15,         -- seconds between shots (floor, not per-frame)
+    FOV         = 25,           -- pixels from crosshair
+    FireDelay   = 0.12,         -- seconds between shots (floor, not per-frame)
     WallCheck   = true,
     HitPoint    = "Head",       -- "Head" / "Chest" / "Body"
-    FireMethod  = "Mouse",      -- "Mouse" / "Tool"
-    ShotMode    = "Tap",        -- "Tap" (1 per target) / "Burst" / "Auto"
+    FireMethod  = "Mouse",      -- "Mouse" (chain) / "Tool" / "Auto"
+    ShotMode    = "Auto",       -- "Tap" (1 per target) / "Burst" / "Auto"
     BurstShots  = 3,            -- only used by "Burst"
 }
 
 Triggerbot.State = {
-    Running    = false,         -- key held
-    LastFire   = 0,
-    Target     = nil,
-    LastTarget = nil,           -- target identity for shot-count reset
-    Shots      = 0,             -- shots fired at current target
-    Visible    = false,
-    Status     = "idle",
+    Running       = false,      -- key held
+    LastFire      = 0,
+    Target        = nil,
+    LastTarget    = nil,        -- target identity for shot-count reset
+    Shots         = 0,          -- shots fired at current target
+    Visible       = false,
+    Status        = "idle",
+    Nearest       = math.huge,  -- px to nearest enemy, for the HUD
+    NearestName   = "none",
+    LastFireWith  = "none",     -- which fire path actually worked
 }
 
 function Triggerbot:IsEnemy(player)
@@ -244,7 +248,9 @@ end
 
 function Triggerbot:IsVisible(targetPart, character)
     if not self.Settings.WallCheck then return true end
-    local camPos = Camera.CFrame.Position
+    local cam = self:GetCamera()
+    if not cam then return false end
+    local camPos = cam.CFrame.Position
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     local localChar = LocalPlayer.Character
@@ -254,9 +260,33 @@ function Triggerbot:IsVisible(targetPart, character)
     return result.Instance:IsDescendantOf(character)
 end
 
+-- Crosshair position in viewport space (the same space WorldToViewportPoint uses).
+-- First person: dead centre. Free mouse: mouse position minus the topbar inset.
+function Triggerbot:GetCrosshair()
+    local behavior = UserInputService.MouseBehavior
+    if behavior == Enum.MouseBehavior.LockCenter or behavior == Enum.MouseBehavior.LockCurrentPosition then
+        local vp = Camera.ViewportSize
+        return Vector2.new(vp.X * 0.5, vp.Y * 0.5)
+    end
+    local m = UserInputService:GetMouseLocation()
+    local inset = GuiService:GetGuiInset()
+    return Vector2.new(m.X, m.Y - inset.Y)
+end
+
+function Triggerbot:GetCamera()
+    if workspace.CurrentCamera then
+        Camera = workspace.CurrentCamera
+    end
+    return Camera
+end
+
 function Triggerbot:FindTarget()
-    local crosshair = UserInputService:GetMouseLocation()
+    local cam = self:GetCamera()
+    if not cam then return nil end
+    local crosshair = self:GetCrosshair()
     local best, bestDist = nil, self.Settings.FOV
+    self.State.Nearest = math.huge
+    self.State.NearestName = "none"
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
@@ -265,9 +295,13 @@ function Triggerbot:FindTarget()
             if character and humanoid and humanoid.Health > 0 and self:IsEnemy(player) then
                 local part = self:GetHitPart(character)
                 if part then
-                    local v, onScreen = Camera:WorldToViewportPoint(part.Position)
+                    local v, onScreen = cam:WorldToViewportPoint(part.Position)
                     if onScreen and v.Z > 0 then
-                        local d = (Vector2.new(v.X, v.Y) - Vector2.new(crosshair.X, crosshair.Y)).Magnitude
+                        local d = (Vector2.new(v.X, v.Y) - crosshair).Magnitude
+                        if d < self.State.Nearest then
+                            self.State.Nearest = d
+                            self.State.NearestName = player.Name
+                        end
                         if d < bestDist and self:IsVisible(part, character) then
                             bestDist = d
                             best = { player = player, character = character, part = part }
@@ -288,25 +322,58 @@ function Triggerbot:ShouldFireNow()
     return true
 end
 
+local function mousePath()
+    if type(mouse1click) == "function" then
+        local ok = pcall(mouse1click)
+        if ok then return "mouse1click" end
+    end
+    if type(mouse1press) == "function" and type(mouse1release) == "function" then
+        local ok = pcall(mouse1press)
+        if ok then
+            task.delay(0.02, function() pcall(mouse1release) end)
+            return "mouse1press"
+        end
+    end
+    local vimOk = pcall(function()
+        local vim = game:GetService("VirtualInputManager")
+        local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+        local inset = GuiService:GetGuiInset()
+        local px, py = vp.X * 0.5, vp.Y * 0.5 + inset.Y
+        vim:SendMouseButtonEvent(px, py, 0, true, game, 0)
+        task.delay(0.02, function()
+            pcall(function() vim:SendMouseButtonEvent(px, py, 0, false, game, 0) end)
+        end)
+    end)
+    if vimOk then return "VirtualInputManager" end
+    return nil
+end
+
 function Triggerbot:Fire()
     local now = tick()
     local delay = math.max(self.Settings.FireDelay, 0.02)
     if now - self.State.LastFire < delay then return false end
 
-    if self.Settings.FireMethod == "Tool" then
-        local char = LocalPlayer.Character
-        local tool = char and char:FindFirstChildOfClass("Tool")
-        if not tool then return false end
-        self.State.LastFire = now
-        pcall(function() tool:Activate() end)
-        return true
+    local char = LocalPlayer.Character
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    local method = self.Settings.FireMethod
+    local used = nil
+
+    if method == "Tool" or method == "Auto" then
+        if tool then
+            local ok = pcall(function() tool:Activate() end)
+            if ok then used = "Tool:Activate" end
+        end
+        if method == "Tool" and not used then return false end
     end
 
-    if type(mouse1click) ~= "function" then
-        return false
+    if not used then
+        used = mousePath()
     end
+
+    if not used then return false end
+
     self.State.LastFire = now
-    pcall(mouse1click)
+    self.State.LastFireWith = used
     return true
 end
 
@@ -413,7 +480,7 @@ trigTab:Dropdown("Hit Point", { "Head", "Chest", "Body" }, function(val)
     Triggerbot.Settings.HitPoint = val
 end)
 
-trigTab:Dropdown("Fire Method", { "Mouse", "Tool" }, function(val)
+trigTab:Dropdown("Fire Method", { "Mouse", "Tool", "Auto" }, function(val)
     Triggerbot.Settings.FireMethod = val
 end)
 
@@ -448,6 +515,71 @@ trigTab:Button("Reset Shot State", function()
     Triggerbot.State.Status = "idle"
 end)
 
+local trigDebug = trigTab:Label("nearest: - | crosshair: - | tool: -")
+
+trigTab:Button("Test Fire (prints what works)", function()
+    local char = LocalPlayer.Character
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    print("[Triggerbot] ---- FIRE TEST ----")
+    print("  tool        : " .. (tool and tool.Name or "none"))
+    print("  mouse1click : " .. tostring(type(mouse1click)))
+    print("  mouse1press : " .. tostring(type(mouse1press)))
+    print("  mouse behavior: " .. tostring(UserInputService.MouseBehavior))
+    print("  viewport    : " .. tostring(Camera.ViewportSize))
+    Triggerbot.State.LastFire = 0
+    local method = Triggerbot.Settings.FireMethod
+    Triggerbot.Settings.FireMethod = (method == "Tool") and "Tool" or "Mouse"
+    local ok = Triggerbot:Fire()
+    Triggerbot.Settings.FireMethod = method
+    print("  fired       : " .. tostring(ok) .. " via " .. tostring(Triggerbot.State.LastFireWith))
+    print("[Triggerbot] ---- END ----")
+end)
+
+trigTab:Button("Learn Remote (30s, shoot manually)", function()
+    if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" then
+        print("[Triggerbot] hookmetamethod unavailable in this executor")
+        return
+    end
+    print("[Triggerbot] hooking FireServer for 30s - fire one shot manually now")
+    local seen = {}
+    local old
+    old = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        if method == "FireServer" and typeof(self) == "Instance" and self:IsA("RemoteEvent") then
+            if not seen[self] then
+                seen[self] = true
+                print("[Triggerbot] FireServer -> " .. self:GetFullName())
+            end
+        end
+        return old(self, ...)
+    end)
+    task.delay(30, function()
+        pcall(function()
+            if type(restorefunction) == "function" then
+                restorefunction(old)
+            end
+        end)
+        print("[Triggerbot] hook released")
+    end)
+end)
+
+trigTab:Button("Dump Distances (nearest enemy px)", function()
+    local cam = Triggerbot:GetCamera()
+    local ch = Triggerbot:GetCrosshair()
+    print("[Triggerbot] crosshair=" .. tostring(ch) .. " behavior=" .. tostring(UserInputService.MouseBehavior))
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local part = Triggerbot:GetHitPart(p.Character)
+            if part and cam then
+                local v, on = cam:WorldToViewportPoint(part.Position)
+                local d = (Vector2.new(v.X, v.Y) - ch).Magnitude
+                print(string.format("  %s | onScreen=%s | px=%.1f | visible=%s",
+                    p.Name, tostring(on), d, tostring(Triggerbot:IsVisible(part, p.Character))))
+            end
+        end
+    end
+end)
+
 trigTab:Label("Mode Hold = trigger only while F is held.")
 trigTab:Label("Mode Always = trigger on any enemy under crosshair.")
 trigTab:Label("Tap = one shot per target, stops the flood.")
@@ -459,15 +591,16 @@ trigTab:Label("Mouse = mouse1click, Tool = tool:Activate().")
 --  input & loop
 -- ============================================================
 UserInputService.InputBegan:Connect(function(input, gpe)
+    -- trigger key is read before the gameProcessed guard: Rivals binds plenty of keys
+    if input.KeyCode == Triggerbot.Settings.Key then
+        Triggerbot.State.Running = true
+    end
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.RightShift then
         Aimbot:ToggleUI()
     end
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         Aimbot.State.Running = true
-    end
-    if input.KeyCode == Triggerbot.Settings.Key then
-        Triggerbot.State.Running = true
     end
 end)
 
@@ -554,10 +687,20 @@ RunService.RenderStepped:Connect(function()
             if now - (Triggerbot.State.LastHud or 0) > 0.1 then
                 Triggerbot.State.LastHud = now
                 local targetName = Triggerbot.State.Target and Triggerbot.State.Target.Name or "none"
-                trigStatus.ButtonTitle.Text = string.format("Status: %s | target: %s | %s/%s | shots: %d",
-                    tostring(Triggerbot.State.Status), targetName,
+                local nearest = Triggerbot.State.Nearest
+                local nearestText = (nearest == math.huge) and "-" or string.format("%.0fpx", nearest)
+                trigStatus.ButtonTitle.Text = string.format("Status: %s | target: %s | nearest: %s | %s/%s | shots: %d",
+                    tostring(Triggerbot.State.Status), targetName, nearestText,
                     Triggerbot.Settings.Mode, Triggerbot.Settings.ShotMode,
                     Triggerbot.State.Shots)
+
+                if trigDebug and trigDebug.ButtonTitle then
+                    local char = LocalPlayer.Character
+                    local tool = char and char:FindFirstChildOfClass("Tool")
+                    trigDebug.ButtonTitle.Text = string.format("nearest: %s | crosshair: %s | tool: %s | method: %s",
+                        nearestText, tostring(UserInputService.MouseBehavior),
+                        tool and tool.Name or "none", Triggerbot.State.LastFireWith)
+                end
             end
         end
     end)
@@ -567,7 +710,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("[W1lteGameYT Hub] Loaded v19.2! Right Shift = UI. RMB = aim. Triggerbot tab = auto-fire.")
+print("[W1lteGameYT Hub] Loaded v19.3! Right Shift = UI. RMB = aim. Triggerbot tab = auto-fire.")
 
 end)
 
