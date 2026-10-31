@@ -1,4 +1,4 @@
-print("[W1lteGameYT Hub] Loading... v19.5")
+print("[W1lteGameYT Hub] Loading... v19.6")
 
 local success, err = pcall(function()
 
@@ -430,7 +430,7 @@ end
 local Esp = {}
 
 Esp.Settings = {
-    Enabled     = false,
+    Enabled     = true,
     Box         = true,
     BoxFill     = true,
     Name        = true,
@@ -465,7 +465,23 @@ local function ensureGui()
     gui.DisplayOrder = 999
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.Parent = PlayerGui
+
+    -- on-screen heartbeat: if this text shows, the GUI itself is alive
+    local info = Instance.new("TextLabel")
+    info.Name = "info"
+    info.BackgroundTransparency = 1
+    info.Position = UDim2.fromOffset(10, 10)
+    info.Size = UDim2.fromOffset(520, 22)
+    info.Font = Enum.Font.Code
+    info.TextSize = 14
+    info.TextXAlignment = Enum.TextXAlignment.Left
+    info.TextColor3 = Color3.fromRGB(80, 255, 120)
+    info.TextStrokeTransparency = 0.4
+    info.Text = "ESP loading..."
+    info.Parent = gui
+
     Esp.Gui = gui
+    Esp.Info = info
     return gui
 end
 
@@ -590,6 +606,7 @@ function Esp:ClearAll()
         pcall(function() self.Gui:Destroy() end)
         self.Gui = nil
     end
+    self.Info = nil
 end
 
 function Esp:Visible(part, character)
@@ -700,9 +717,11 @@ function Esp:Update()
 
     local seen = {}
     local drawn = 0
+    local seenPlayers = 0
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
+            seenPlayers = seenPlayers + 1
             local character = player.Character
             local humanoid = character and character:FindFirstChildOfClass("Humanoid")
             local head = character and character:FindFirstChild("Head")
@@ -714,11 +733,21 @@ function Esp:Update()
 
             local entry = self.State.entries[player]
             if ok then
-                entry = entry or self:Acquire(player)
-                if self:UpdateEntry(entry, player, character, humanoid, head, rootPart, cam, vp, camPos) then
+                local okDraw, err = pcall(function()
+                    entry = entry or self:Acquire(player)
+                    return self:UpdateEntry(entry, player, character, humanoid, head, rootPart, cam, vp, camPos)
+                end)
+                if okDraw and entry and entry.root.Visible then
                     seen[player] = true
                     drawn = drawn + 1
+                elseif not okDraw then
+                    self.State.LastError = tostring(err)
+                    if not self.State.ErrorReported then
+                        self.State.ErrorReported = true
+                        warn("[ESP] draw error: " .. tostring(err))
+                    end
                 end
+                if entry and not okDraw then entry.root.Visible = false end
             elseif entry then
                 entry.root.Visible = false
             end
@@ -735,6 +764,12 @@ function Esp:Update()
     end
 
     self.State.Drawn = drawn
+    self.State.Seen = seenPlayers
+
+    if self.Info then
+        self.Info.Text = string.format("ESP ON | players:%d drawn:%d | cam:%s | err:%s",
+            seenPlayers, drawn, tostring(cam ~= nil), tostring(self.State.LastError or "none"))
+    end
 end
 
 
@@ -975,6 +1010,11 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == Triggerbot.Settings.Key then
         Triggerbot.State.Running = true
     end
+    -- G = hard toggle for the ESP, independent of the UI lib
+    if input.KeyCode == Enum.KeyCode.G then
+        Esp.Settings.Enabled = not Esp.Settings.Enabled
+        print("[ESP] " .. (Esp.Settings.Enabled and "ON" or "OFF"))
+    end
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.RightShift then
         Aimbot:ToggleUI()
@@ -1102,7 +1142,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("[W1lteGameYT Hub] Loaded v19.5! Right Shift = UI. RMB = aim. Triggerbot tab = auto-fire. ESP tab = boxes.")
+print("[W1lteGameYT Hub] Loaded v19.6! Right Shift = UI. RMB = aim. Triggerbot tab = auto-fire. ESP tab = boxes.")
 
 end)
 
